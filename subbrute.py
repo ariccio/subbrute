@@ -17,7 +17,7 @@ import signal
 import sys
 import random
 import dns.resolver
-import smtplib, os
+import smtplib
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEBase import MIMEBase
 from email.MIMEText import MIMEText
@@ -34,8 +34,9 @@ except:
 NO_OUTPUT = True
 
 
-#exit handler for signals.  So ctrl+c will work,  even with py threads. 
-def killme(signum = 0, frame = 0):
+
+def killme():
+    '''exit handler for signals.  So ctrl+c will work,  even with py threads. '''
     os.kill(os.getpid(), 9)
 
 class lookup(Thread):
@@ -148,6 +149,7 @@ def extract_subdomains(file_name):
     return subs_sorted
 
 def check_resolvers(file_name):
+    '''validates given list of DNS resolvers'''
     ret = []
     resolver = dns.resolver.Resolver()
     res_file = open(file_name).read()
@@ -164,6 +166,7 @@ def check_resolvers(file_name):
     return ret
 
 def print_to_file(output,aFile):
+    '''prints found domains to a file'''
     try:
         f = open(aFile,'a')
     except IOError:
@@ -173,6 +176,7 @@ def print_to_file(output,aFile):
 
 
 def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
+    '''run subdomain bruteforce lookup against a specified target domain'''
     #The target might have a wildcard dns record...
     wildcard = False
     try:
@@ -193,7 +197,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
         step_size = 1
     step = 0
     threads = []
-    for i in range(thread_count):
+    for i in range(thread_count):#what the hell is i for?
         threads.append(lookup(in_q, out_q, target, wildcard , resolve_list[step:step + step_size]))
         threads[-1].start()
     step += step_size
@@ -220,6 +224,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
 
 
 def send_mail(send_from, send_to, subject, text, files=[], server="localhost"):
+    '''sends output file to given email addr'''
     assert type(send_to)==list
     assert type(files)==list
 
@@ -280,7 +285,7 @@ def main():
     hosts = open(options.subs).read().split("\n")
 
     resolve_list = check_resolvers(options.resolvers)
-    threads = []#is this even needed?
+    #threads = []#is this even needed?
     signal.signal(signal.SIGINT, killme)
 
     for target in targets:
