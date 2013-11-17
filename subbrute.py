@@ -40,7 +40,7 @@ def killme():
     os.kill(os.getpid(), 9)
 
 class lookup(Thread):
-
+    '''instantiates new thread?'''
     def __init__(self, in_q, out_q, domain, wildcard = False, resolver_list = []):
         Thread.__init__(self)
         self.in_q = in_q
@@ -197,7 +197,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
         step_size = 1
     step = 0
     threads = []
-    for i in range(thread_count):#what the hell is i for?
+    for _ in range(thread_count):#underscore is python convention for unused variable
         threads.append(lookup(in_q, out_q, target, wildcard , resolve_list[step:step + step_size]))
         threads[-1].start()
     step += step_size
