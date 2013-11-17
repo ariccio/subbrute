@@ -1,9 +1,14 @@
-#!/usr/bin/python
-#
-#SubBrute v1.0
-#A (very) fast subdomain enumeration tool.
-#Written by Rook
-#
+#!C:\Python27\python.exe
+'''
+!/usr/bin/python
+
+SubBrute v1.0
+A (very) fast subdomain enumeration tool.
+
+Written by Rook
+Forked by jeremyBass
+Forked by Alexander Riccio
+'''
 import re
 import time
 import optparse
@@ -24,6 +29,10 @@ try:
     import queue
 except:
     import Queue as queue
+
+
+NO_OUTPUT = True
+
 
 #exit handler for signals.  So ctrl+c will work,  even with py threads. 
 def killme(signum = 0, frame = 0):
@@ -104,8 +113,9 @@ class lookup(Thread):
                 if addr and addr != self.wildcard:
                     self.out_q.put(test)
 
-#Return a list of unique sub domains,  sorted by frequency.
+
 def extract_subdomains(file_name):
+    '''Returns a list of unique sub domains,  sorted by frequency'''
     subs = {}
     sub_file = open(file_name).read()
     #Only match domains that have 3 or more sections subdomain.domain.tld
@@ -153,13 +163,16 @@ def check_resolvers(file_name):
                 pass
     return ret
 
-def print_to_file(output,file):
-    f = open(file,'a')
+def print_to_file(output,aFile):
+    try:
+        f = open(aFile,'a')
+    except IOError:
+        f = open(aFile,'w')
     f.write(output+'\n')
     f.close()
 
 
-def run_target(target, hosts, resolve_list, thread_count, file):
+def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     #The target might have a wildcard dns record...
     wildcard = False
     try:
@@ -179,6 +192,7 @@ def run_target(target, hosts, resolve_list, thread_count, file):
     if step_size <= 0:
         step_size = 1
     step = 0
+    threads = []
     for i in range(thread_count):
         threads.append(lookup(in_q, out_q, target, wildcard , resolve_list[step:step + step_size]))
         threads[-1].start()
@@ -195,7 +209,8 @@ def run_target(target, hosts, resolve_list, thread_count, file):
                 threads_remaining -= 1
             else:
                 print(d)
-                print_to_file(d,file)
+                if noOutput == False:
+                    print_to_file(d,aFile)
         except queue.Empty:
             pass
         #make sure everyone is complete
@@ -228,7 +243,7 @@ def send_mail(send_from, send_to, subject, text, files=[], server="localhost"):
     smtp.close()
 
 
-if __name__ == "__main__":
+def main():
     parser = optparse.OptionParser("usage: %prog [options] target")
     parser.add_option("-c", "--thread_count", dest = "thread_count",
               default = 10, type = "int",
@@ -265,12 +280,19 @@ if __name__ == "__main__":
     hosts = open(options.subs).read().split("\n")
 
     resolve_list = check_resolvers(options.resolvers)
-    threads = []
+    threads = []#is this even needed?
     signal.signal(signal.SIGINT, killme)
 
     for target in targets:
         target = target.strip()
         if target:
-            run_target(target, hosts, resolve_list, options.thread_count, options.output_file)
+            if options.output_file != "":
+                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, not NO_OUTPUT)
+            elif options.output_file == "":
+                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, NO_OUTPUT)
             if options.sendto_email != "":
                 send_mail(options.sendto_email,options.sendto_email,"domains","text",[options.output_file], "localhost")
+
+
+if __name__ == "__main__":
+    main()
