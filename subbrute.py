@@ -213,7 +213,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
                 threads_remaining -= 1
             else:
                 print(d)
-                if noOutput == False:
+                if not noOutput:
                     print_to_file(d,aFile)
         except queue.Empty:
             pass
