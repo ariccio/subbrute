@@ -118,7 +118,9 @@ class lookup(Thread):
 def extract_subdomains(file_name):
     '''Returns a list of unique sub domains,  sorted by frequency'''
     subs = {}
-    sub_file = open(file_name).read()
+    #sub_file = open(file_name).read()
+    with open(file_name) as inputFile:
+        sub_file = inputFile.read()
     #Only match domains that have 3 or more sections subdomain.domain.tld
     domain_match = re.compile("([a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*)+")
     f_all = re.findall(domain_match, sub_file)
@@ -297,6 +299,10 @@ def main():
                 run_target(target, hosts, resolve_list, options.thread_count, options.output_file, NO_OUTPUT)
             if options.sendto_email != "":
                 send_mail(options.sendto_email,options.sendto_email,"domains","text",[options.output_file], "localhost")
+
+def debugHelp(gimmeInfo):
+    print(str(gimmeInfo))
+
 
 
 if __name__ == "__main__":
