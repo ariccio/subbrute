@@ -17,12 +17,14 @@ import signal
 import sys
 import random
 import dns.resolver
+'''
 import smtplib
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEBase import MIMEBase
 from email.MIMEText import MIMEText
 from email.Utils import COMMASPACE, formatdate
 from email import Encoders
+'''
 from threading import Thread
 import math
 
@@ -226,9 +228,9 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
             break
 
 
-
+'''
 def send_mail(send_from, send_to, subject, text, files=[], server="localhost"):
-    '''sends output file to given email addr'''
+    \'\'\'sends output file to given email addr\'\'\'
     assert type(send_to)==list
     assert type(files)==list
 
@@ -250,7 +252,7 @@ def send_mail(send_from, send_to, subject, text, files=[], server="localhost"):
     smtp = smtplib.SMTP(server)
     smtp.sendmail(send_from, send_to, msg.as_string())
     smtp.close()
-
+'''
 
 def main():
     parser = optparse.OptionParser("usage: %prog [options] target")
