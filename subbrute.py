@@ -51,12 +51,12 @@ class lookup(Thread):
         self.wildcard = wildcard
         self.resolver_list = resolver_list
         self.resolver = dns.resolver.Resolver()
-        if len(self.resolver.nameservers):
+        if len(self.resolver.nameservers) > 0:
             self.backup_resolver = self.resolver.nameservers
         else:
             #we must have a resolver,  and this is the default resolver on my system...
             self.backup_resolver = ['127.0.0.1']
-        if len(self.resolver_list):
+        if len(self.resolver_list) > 0:
             self.resolver.nameservers = self.resolver_list
 
     def check(self, host):
