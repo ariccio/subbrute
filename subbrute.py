@@ -24,6 +24,8 @@ from email.MIMEText import MIMEText
 from email.Utils import COMMASPACE, formatdate
 from email import Encoders
 from threading import Thread
+import math
+
 #support for python 2.7 and 3
 try:
     import queue
@@ -40,7 +42,7 @@ def killme():
     os.kill(os.getpid(), 9)
 
 class lookup(Thread):
-    '''instantiates new thread?'''
+    '''instantiates new lookup thread'''
     def __init__(self, in_q, out_q, domain, wildcard = False, resolver_list = []):
         Thread.__init__(self)
         self.in_q = in_q
@@ -58,6 +60,7 @@ class lookup(Thread):
             self.resolver.nameservers = self.resolver_list
 
     def check(self, host):
+        '''Query DNS resolver(s), if no answer or timeout, backoff  2^numTries '''
         slept = 0
         while True:
             try:
@@ -88,7 +91,7 @@ class lookup(Thread):
                         #I don't think we are ever guaranteed a response for a given name.
                         return False
                     #Hmm,  we might have hit a rate limit on a resolver.
-                    time.sleep(1)
+                    time.sleep(math.pow(2, slept))
                     slept += 1
                     #retry...
                 elif type(e) == IndexError:
@@ -116,9 +119,8 @@ class lookup(Thread):
 
 
 def extract_subdomains(file_name):
-    '''Returns a list of unique sub domains,  sorted by frequency'''
+    '''Returns a list of unique sub domains (from given file),  sorted by frequency'''
     subs = {}
-    #sub_file = open(file_name).read()
     with open(file_name) as inputFile:
         sub_file = inputFile.read()
     #Only match domains that have 3 or more sections subdomain.domain.tld
