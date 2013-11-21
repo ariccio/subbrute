@@ -17,12 +17,14 @@ import signal
 import sys
 import random
 import dns.resolver
+'''
 import smtplib
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEBase import MIMEBase
 from email.MIMEText import MIMEText
 from email.Utils import COMMASPACE, formatdate
 from email import Encoders
+'''
 from threading import Thread
 import math
 
@@ -32,12 +34,10 @@ try:
 except:
     import Queue as queue
 
+NO_OUTPUT  = True
+DEBUG_MODE = True
 
-NO_OUTPUT = True
-
-
-
-def killme():
+def killme(_, _2):
     '''exit handler for signals.  So ctrl+c will work,  even with py threads. '''
     os.kill(os.getpid(), 9)
 
@@ -113,6 +113,7 @@ class lookup(Thread):
                 break
             else:
                 test = "%s.%s" % (sub, self.domain)
+                debugHelp('\t\t\t\tTesting ' + str(test) + ' ......')
                 addr = self.check(test)
                 if addr and addr != self.wildcard:
                     self.out_q.put(test)
@@ -154,19 +155,22 @@ def extract_subdomains(file_name):
 
 def check_resolvers(file_name):
     '''validates given list of DNS resolvers'''
+    debugHelp('\t ' + 'check_resolvers(file_name) passed: ' + file_name)
     ret = []
     resolver = dns.resolver.Resolver()
     res_file = open(file_name).read()
     for server in res_file.split("\n"):
+        debugHelp('\t\t selected server ' + server)
         server = server.strip()
         if server:
             resolver.nameservers = [server]
+            debugHelp('\t\t\tresolver.nameservers = ' + str(resolver.nameservers))
             try:
                 resolver.query("www.google.com")
                 #should throw an exception before this line.
                 ret.append(server)
             except:
-                pass
+                debugHelp('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
     return ret
 
 def print_to_file(output,aFile):
@@ -181,29 +185,45 @@ def print_to_file(output,aFile):
 
 def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     '''run subdomain bruteforce lookup against a specified target domain'''
+    if thread_count < 1:
+        debugHelp(__name__ + ' passed thread_count: ' + str(thread_count) + ' - we NEED at least 1 thread. Setting thread_count to 1')
+        thread_count = 1
+    if len(hosts) < 100:
+        debugHelp('\n\tbegin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + str(hosts) + ' ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput))
+    elif len(hosts) >99:
+        debugHelp('\n\tbegin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + '<huge hosts list! Omitting it!> ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput)) 
     #The target might have a wildcard dns record...
     wildcard = False
     try:
-
         resp = dns.resolver.Resolver().query("would-never-be-a-fucking-domain-name-" + str(random.randint(1, 9999)) + "." + target)
         wildcard = str(resp[0])
+        debugHelp('wildcard got ' + str(wildcard))
+    except dns.resolver.NXDOMAIN:
+        
+        print("Our target doesn't seem to redirect nonsense subdomains! (else our results would be invalid)")
+        
     except:
-        pass
+        debugHelp('\n\t\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
     in_q = queue.Queue()
     out_q = queue.Queue()
-    for h in hosts:
+    for h in hosts:#puts all known subdomains into in_q
+        #debugHelp('\t\t\tputting h ' + str(h) + ' from hosts into in_q')
         in_q.put(h)
     #Terminate the queue
     in_q.put(False)
     step_size = int(len(resolve_list) / thread_count)
+    debugHelp('\t\tchose step size: ' + str(step_size))
     #Split up the resolver list between the threads. 
     if step_size <= 0:
         step_size = 1
     step = 0
     threads = []
+    debugHelp('\t\t                                                lookup(' + 'in_q loc in RAM, ' + ' out_q loc in RAM, ' + ' target' + ', ' + ' wildcard' + ', ' + 'resolve_list[step:step + step_size]' +')')
     for _ in range(thread_count):#underscore is python convention for unused variable
+        debugHelp('\t\tAppending new lookup object to list of threads, lookup(' + '\t\t\t\t\t\t'  + str(target) + ', ' + str(wildcard) + ',   ' + str(resolve_list[step:step + step_size]) +')')
         threads.append(lookup(in_q, out_q, target, wildcard , resolve_list[step:step + step_size]))
         threads[-1].start()
+    debugHelp('\t\tstep (now ' + str(step) + ') incrementing by step_size (' + str(step_size) + ')')
     step += step_size
     if step >= len(resolve_list):
         step = 0
@@ -212,6 +232,10 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     while True:
         try:
             d = out_q.get(True, 10)
+            if d not False:
+                debugHelp('\t\t\tdomain: ' + str(d) + ' is valid!')
+            elif d == False:
+                debugHelp('\t\t\tIt looks like this thread has exhausted it\'s queue')
             #we will get an empty exception before this runs. 
             if not d:
                 threads_remaining -= 1
@@ -220,15 +244,15 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
                 if not noOutput:
                     print_to_file(d,aFile)
         except queue.Empty:
-            pass
+            debugHelp('\t\t\texhausted list of subdomains to bruteforce')
         #make sure everyone is complete
         if threads_remaining <= 0:
             break
 
 
-
+'''
 def send_mail(send_from, send_to, subject, text, files=[], server="localhost"):
-    '''sends output file to given email addr'''
+    \'\'\'sends output file to given email addr\'\'\'
     assert type(send_to)==list
     assert type(files)==list
 
@@ -250,7 +274,7 @@ def send_mail(send_from, send_to, subject, text, files=[], server="localhost"):
     smtp = smtplib.SMTP(server)
     smtp.sendmail(send_from, send_to, msg.as_string())
     smtp.close()
-
+'''
 
 def main():
     parser = optparse.OptionParser("usage: %prog [options] target")
@@ -271,7 +295,8 @@ def main():
               type = "string", help = "(optional) email to send file to")
 
     (options, args) = parser.parse_args()
-
+    debugHelp('\ndebugger passed options: ' + str(options))
+    debugHelp('debugger passed args: '    + str(args))
     if len(args) < 1 and options.filter == "" and options.targets == "":
         parser.error("You must provie a target! Use -h for help.")
 
@@ -283,12 +308,19 @@ def main():
 
     if options.targets != "":
         targets = open(options.targets).read().split("\n")
+        debugHelp('options.targets !="", targets = ' + str(targets))
     else:
         targets = args #multiple arguments on the cli:  ./subbrute.py google.com gmail.com yahoo.com
-
+        debugHelp('"multiple arguments on the cli", targets = ' + str(targets))
+                  
     hosts = open(options.subs).read().split("\n")
-
+    if len(hosts) < 100:
+        debugHelp('hosts = ' + str(hosts))
+    elif len(hosts) > 99:
+        debugHelp('hosts = a really damn big list, so big that I\'m omitting it!')
+    debugHelp('Checking resolvers...')
     resolve_list = check_resolvers(options.resolvers)
+    debugHelp('main() got list of resolvers: ' + str(resolve_list) + ' from check_resolvers')
     #threads = []#is this even needed?
     signal.signal(signal.SIGINT, killme)
 
@@ -302,10 +334,15 @@ def main():
             if options.sendto_email != "":
                 send_mail(options.sendto_email,options.sendto_email,"domains","text",[options.output_file], "localhost")
 
-def debugHelp(gimmeInfo):
-    print(str(gimmeInfo))
-
-
+def debugHelp(*args):
+    '''if DEBUG_MODE == True, this function prints parameter(s) to screen'''
+    if DEBUG_MODE:
+        stringToPrint = ''
+        for arg in args:
+            stringToPrint += str(arg)
+        print(stringToPrint)
+    else:
+        pass
 
 if __name__ == "__main__":
     main()
