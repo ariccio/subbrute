@@ -9,6 +9,7 @@ Written by Rook
 Forked by jeremyBass
 Forked by Alexander Riccio
 '''
+from __future__ import print_function
 import re
 import time
 import optparse
@@ -28,17 +29,21 @@ from email import Encoders
 from threading import Thread
 import math
 
+
+
 #support for python 2.7 and 3
 try:
     import queue
-except:
+except ImportError:
     import Queue as queue
-
+    
+    
 NO_OUTPUT  = True
-DEBUG_MODE = True
+DEBUG_MODE = False
 
-def killme(_, _2):
+def killme(_, _unused):
     '''exit handler for signals.  So ctrl+c will work,  even with py threads. '''
+    del _, _unused
     os.kill(os.getpid(), 9)
 
 class lookup(Thread):
@@ -72,7 +77,8 @@ class lookup(Thread):
             except Exception as e:
                 if type(e) == dns.resolver.NXDOMAIN:
                     #not found
-                    return False
+                    pass
+
                 elif type(e) == dns.resolver.NoAnswer  or type(e) == dns.resolver.Timeout:
                     if slept == 4:
                         #This dns server stopped responding.
@@ -98,6 +104,12 @@ class lookup(Thread):
                     #Some old versions of dnspython throw this error,
                     #doesn't seem to affect the results,  and it was fixed in later versions.
                     pass
+                elif type(e) == dns.resolver.YXDOMAIN:
+                    #the query name is too long after DNAME substitution
+                    pass
+                elif type(e) == dns.resolver.NoNameServers:
+                    #no non-broken nameservers are available to answer the question
+                    print("NoNameServers!", file=sys.stderr)
                 else:
                     #dnspython threw some strange exception...
                     raise e
@@ -113,7 +125,7 @@ class lookup(Thread):
                 break
             else:
                 test = "%s.%s" % (sub, self.domain)
-                debugHelp('\t\t\t\tTesting ' + str(test) + ' ......')
+                debugHelp('\t\t\t\tTesting ' + str(test) + ' ......\r')
                 addr = self.check(test)
                 if addr and addr != self.wildcard:
                     self.out_q.put(test)
@@ -192,6 +204,13 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
         debugHelp('\n\tbegin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + str(hosts) + ' ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput))
     elif len(hosts) >99:
         debugHelp('\n\tbegin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + '<huge hosts list! Omitting it!> ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput)) 
+    try:
+        resp = dns.resolver.Resolver().query(target)
+        
+    except dns.resolver.NXDOMAIN:
+        print("CRITICAL: Domain  ( " + target + " ) not found!", file=sys.stderr)
+        print("I can't find domain ( " + target + " )! I can't check for subdomains of an unknown domain!")
+        return
     #The target might have a wildcard dns record...
     wildcard = False
     try:
@@ -200,7 +219,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
         debugHelp('wildcard got ' + str(wildcard))
     except dns.resolver.NXDOMAIN:
         
-        print("Our target doesn't seem to redirect nonsense subdomains! (else our results would be invalid)")
+        print("Target ( " + target + " ) doesn't seem to redirect nonsense subdomains! (else our results would be invalid)")
         
     except:
         debugHelp('\n\t\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
@@ -232,22 +251,23 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     while True:
         try:
             d = out_q.get(True, 10)
-            if d not False:
-                debugHelp('\t\t\tdomain: ' + str(d) + ' is valid!')
-            elif d == False:
-                debugHelp('\t\t\tIt looks like this thread has exhausted it\'s queue')
+
+            #debugHelp('\t\t\tIt looks like this thread has exhausted it\'s queue')
             #we will get an empty exception before this runs. 
             if not d:
                 threads_remaining -= 1
             else:
                 print(d)
+                if d:
+                    debugHelp('\t\t\tdomain: ' + str(d) + ' is valid!')
                 if not noOutput:
                     print_to_file(d,aFile)
         except queue.Empty:
-            debugHelp('\t\t\texhausted list of subdomains to bruteforce')
+            #debugHelp('\t\t\tA thread has exhausted it\'s q of subdomains to bruteforce')
         #make sure everyone is complete
-        if threads_remaining <= 0:
-            break
+            if threads_remaining <= 0:
+                debugHelp('No threads remaining!')
+                break
 
 
 '''
@@ -326,13 +346,14 @@ def main():
 
     for target in targets:
         target = target.strip()
+        
         if target:
             if options.output_file != "":
                 run_target(target, hosts, resolve_list, options.thread_count, options.output_file, not NO_OUTPUT)
             elif options.output_file == "":
                 run_target(target, hosts, resolve_list, options.thread_count, options.output_file, NO_OUTPUT)
-            if options.sendto_email != "":
-                send_mail(options.sendto_email,options.sendto_email,"domains","text",[options.output_file], "localhost")
+            #if options.sendto_email != "":
+                #send_mail(options.sendto_email,options.sendto_email,"domains","text",[options.output_file], "localhost")
 
 def debugHelp(*args):
     '''if DEBUG_MODE == True, this function prints parameter(s) to screen'''
