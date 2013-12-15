@@ -18,6 +18,8 @@ import signal
 import sys
 import random
 import dns.resolver
+import platform
+
 '''
 import smtplib
 from email.MIMEMultipart import MIMEMultipart
@@ -32,14 +34,22 @@ import math
 
 
 #support for python 2.7 and 3
-try:
-    import queue
-except ImportError:
-    import Queue as queue
+v = platform.python_version().split('.')
+if v[0].isdigit():
+    if int(v[0]) < 3:
+        import Queue as queue
+    else:
+        import queue
+
+#if platform.python_version()
+#try:
+#    import queue
+#except ImportError:
+#    import Queue as queue
     
     
 NO_OUTPUT  = True
-DEBUG_MODE = False
+DEBUG_MODE = True
 
 def killme(_, _unused):
     '''exit handler for signals.  So ctrl+c will work,  even with py threads. '''
@@ -48,7 +58,7 @@ def killme(_, _unused):
 
 class lookup(Thread):
     '''instantiates new lookup thread'''
-    def __init__(self, in_q, out_q, domain, wildcard = False, resolver_list = []):
+    def __init__(self, in_q, out_q, domain, debugHelp, tid, wildcard = False, resolver_list = []):
         Thread.__init__(self)
         self.in_q = in_q
         self.out_q = out_q
@@ -56,6 +66,8 @@ class lookup(Thread):
         self.wildcard = wildcard
         self.resolver_list = resolver_list
         self.resolver = dns.resolver.Resolver()
+        self.debugHelp = debugHelp
+        self.tid = tid
         if len(self.resolver.nameservers) > 0:
             self.backup_resolver = self.resolver.nameservers
         else:
@@ -64,7 +76,7 @@ class lookup(Thread):
         if len(self.resolver_list) > 0:
             self.resolver.nameservers = self.resolver_list
 
-    def check(self, host):
+    def check(self, host, debugHelp):
         '''Query DNS resolver(s), if no answer or timeout, backoff  2^numTries '''
         slept = 0
         while True:
@@ -97,6 +109,8 @@ class lookup(Thread):
                         #I don't think we are ever guaranteed a response for a given name.
                         return False
                     #Hmm,  we might have hit a rate limit on a resolver.
+                    debugHelp('\t\tTID' + self.tid +':\twe might have hit a rate limit on a resolver!')
+                    debugHelp('\t\tTID' + self.tid + ':\tsleeping ' + str(math.pow(2,slept)))
                     time.sleep(math.pow(2, slept))
                     slept += 1
                     #retry...
@@ -109,15 +123,27 @@ class lookup(Thread):
                     pass
                 elif type(e) == dns.resolver.NoNameServers:
                     #no non-broken nameservers are available to answer the question
-                    print("NoNameServers!", file=sys.stderr)
+                    print("TID" + self.tid + ":\tNoNameServers!", file=sys.stderr)
                 else:
                     #dnspython threw some strange exception...
                     raise e
 
     def run(self):
+        '''this method OVERRIDES threading.thread.run(self)
+            run def from threading.thread:
+                 |  run(self)
+                 |      Method representing the thread's activity.
+                 |      
+                 |      You may override this method in a subclass. The standard run() method
+                 |      invokes the callable object passed to the object's constructor as the
+                 |      target argument, if any, with sequential and keyword arguments taken
+                 |      from the args and kwargs arguments, respectively.'''
+
         while True:
             sub = self.in_q.get()
+            #debugHelp('\t\tsub = ' + str(sub))
             if not sub:
+                self.debugHelp('\t\t\tTID' + self.tid + ':\tnot sub!')
                 #Perpetuate the terminator for all threads to see
                 self.in_q.put(False)
                 #Notify the parent of our death of natural causes.
@@ -125,9 +151,10 @@ class lookup(Thread):
                 break
             else:
                 test = "%s.%s" % (sub, self.domain)
-                debugHelp('\t\t\t\tTesting ' + str(test) + ' ......\r')
-                addr = self.check(test)
+                self.debugHelp('\n\t\tTID' + str(self.tid) +':\tTesting ' + str(test) + ' ......\n')
+                addr = self.check(test, self.debugHelp)
                 if addr and addr != self.wildcard:
+                    self.debugHelp('\n\t\t\tTID' + str(self.tid) + ':\t'+ str(test) + 'is valid! putting in out_q')
                     self.out_q.put(test)
 
 
@@ -165,24 +192,51 @@ def extract_subdomains(file_name):
     subs_sorted = sorted(subs.keys(), key = lambda x: subs[x], reverse = True)
     return subs_sorted
 
-def check_resolvers(file_name):
+def check_resolvers(file_name, debugHelp):
     '''validates given list of DNS resolvers'''
     debugHelp('\t ' + 'check_resolvers(file_name) passed: ' + file_name)
     ret = []
+    lines = []
+    lineClean = []    
     resolver = dns.resolver.Resolver()
-    res_file = open(file_name).read()
-    for server in res_file.split("\n"):
-        debugHelp('\t\t selected server ' + server)
-        server = server.strip()
-        if server:
-            resolver.nameservers = [server]
-            debugHelp('\t\t\tresolver.nameservers = ' + str(resolver.nameservers))
-            try:
-                resolver.query("www.google.com")
-                #should throw an exception before this line.
-                ret.append(server)
-            except:
-                debugHelp('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
+    with open(file_name, 'r') as res_file:
+        for line in res_file:
+            if (line != '') and (line != '\n'):
+                lines.append(line)
+    
+    for line in lines:
+        lineSplit = line.split('\n')
+        lineProc  = [None, None]
+
+        for word in lineSplit:
+            if lineSplit.index(word) == 0:
+                lineProc[0] =  word[0:len(word)]
+
+            elif lineSplit.index(word) == 1:
+                lineProc[1] = word
+        lineClean.append(lineProc[0])
+        
+    #print( str('for method lines: ' + str(lineClean)))
+    
+    #res_file = open(file_name).read()
+    #for server in res_file.split("\n"):
+        #debugHelp('\t\t selected server ' + server)
+        #server = server.strip()
+    debugHelp('\t\tfor all servers in list of resolvers, resolver.nameservers = ' + str(lineClean))
+    for server in lineClean:
+        resolver.nameservers = [server]
+        #debugHelp('\t\tresolver.nameservers = ' + str(resolver.nameservers))
+        try:
+            resolver.query("www.google.com")
+            #should throw an exception before this line.
+            ret.append(server)
+        except dns.resolver.NXDOMAIN:
+            debugHelp('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
+        except:
+            debugHelp('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
+            debugHelp(sys.exc_type)
+            debugHelp(sys.exc_value)
+            debugHelp(sys.exc_traceback)
     return ret
 
 def print_to_file(output,aFile):
@@ -195,15 +249,15 @@ def print_to_file(output,aFile):
     f.close()
 
 
-def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
+def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debugHelp):
     '''run subdomain bruteforce lookup against a specified target domain'''
     if thread_count < 1:
         debugHelp(__name__ + ' passed thread_count: ' + str(thread_count) + ' - we NEED at least 1 thread. Setting thread_count to 1')
         thread_count = 1
     if len(hosts) < 100:
-        debugHelp('\n\tbegin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + str(hosts) + ' ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput))
-    elif len(hosts) >99:
-        debugHelp('\n\tbegin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + '<huge hosts list! Omitting it!> ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput)) 
+        debugHelp('\nbegin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + str(hosts) + ' ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput))
+    elif len(hosts) >=99:
+        debugHelp('\nbegin ' + 'run_target(target ' + str(target) + ', hosts' + '<huge hosts list! Omitting it!> , resolve_list ' + str(resolve_list) + ', thread_count ' + str(thread_count),  ', aFile ' + str(aFile), ', noOutput ' + str(noOutput))
     try:
         resp = dns.resolver.Resolver().query(target)
         
@@ -222,7 +276,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
         print("Target ( " + target + " ) doesn't seem to redirect nonsense subdomains! (else our results would be invalid)")
         
     except:
-        debugHelp('\n\t\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
+        debugHelp('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
     in_q = queue.Queue()
     out_q = queue.Queue()
     for h in hosts:#puts all known subdomains into in_q
@@ -231,18 +285,18 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     #Terminate the queue
     in_q.put(False)
     step_size = int(len(resolve_list) / thread_count)
-    debugHelp('\t\tchose step size: ' + str(step_size))
+    debugHelp('\tchose step size: ' + str(step_size))
     #Split up the resolver list between the threads. 
     if step_size <= 0:
         step_size = 1
     step = 0
     threads = []
-    debugHelp('\t\t                                                lookup(' + 'in_q loc in RAM, ' + ' out_q loc in RAM, ' + ' target' + ', ' + ' wildcard' + ', ' + 'resolve_list[step:step + step_size]' +')')
-    for _ in range(thread_count):#underscore is python convention for unused variable
-        debugHelp('\t\tAppending new lookup object to list of threads, lookup(' + '\t\t\t\t\t\t'  + str(target) + ', ' + str(wildcard) + ',   ' + str(resolve_list[step:step + step_size]) +')')
-        threads.append(lookup(in_q, out_q, target, wildcard , resolve_list[step:step + step_size]))
+    debugHelp('\t                                                lookup( ' + 'target,\t\t' + 'wildcard,\t' + 'resolve_list[step:step + step_size]' +' )')
+    for tid in range(thread_count):#underscore is python convention for unused variable
+        debugHelp('\tAppending new lookup object to list of threads, lookup( ' + str(target) + ',\t' + str(wildcard) + ',\t\t' + str(resolve_list[step:step + step_size]) +' )')
+        threads.append( lookup( in_q, out_q, target, debugHelp, tid,  wildcard , resolve_list[step:step + step_size] ) )
         threads[-1].start()
-    debugHelp('\t\tstep (now ' + str(step) + ') incrementing by step_size (' + str(step_size) + ')')
+    debugHelp('\tstep (now ' + str(step) + ') incrementing by step_size (' + str(step_size) + ')')
     step += step_size
     if step >= len(resolve_list):
         step = 0
@@ -250,16 +304,18 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     threads_remaining = thread_count
     while True:
         try:
-            d = out_q.get(True, 10)
+            d = out_q.get(True, 2)
 
             #debugHelp('\t\t\tIt looks like this thread has exhausted it\'s queue')
             #we will get an empty exception before this runs. 
             if not d:
+                debugHelp('Not d! - d=' + str(d))
                 threads_remaining -= 1
             else:
                 print(d)
                 if d:
-                    debugHelp('\t\t\tdomain: ' + str(d) + ' is valid!')
+                    pass
+                    #debugHelp('\t\tdomain: ' + str(d) + ' is valid!')
                 if not noOutput:
                     print_to_file(d,aFile)
         except queue.Empty:
@@ -298,9 +354,8 @@ def send_mail(send_from, send_to, subject, text, files=[], server="localhost"):
 
 def main():
     parser = optparse.OptionParser("usage: %prog [options] target")
-    parser.add_option("-c", "--thread_count", dest = "thread_count",
-              default = 10, type = "int",
-              help = "(optional) Number of lookup theads to run,  more isn't always better. default=10")
+    parser.add_option("-c", "--thread_count", dest = "thread_count", default = 10,
+              type = "int", help = "(optional) Number of lookup theads to run,  more isn't always better. default=10")
     parser.add_option("-s", "--subs", dest = "subs", default = "subs.txt",
               type = "string", help = "(optional) list of subdomains,  default='subs.txt'")
     parser.add_option("-r", "--resolvers", dest = "resolvers", default = "resolvers.txt",
@@ -313,12 +368,17 @@ def main():
               type = "string", help = "(optional) A file to output list")
     parser.add_option("-e", "--sendto_email", dest = "sendto_email", default = "",
               type = "string", help = "(optional) email to send file to")
-
+    parser.add_option("-d", "--debug", dest = "debugMode", default = "",
+              type  = "string", help = "for the curious...")
     (options, args) = parser.parse_args()
+    if options.debugMode != "":
+        debugHelp = isDebugger(True)
+    else:
+        debugHelp = isDebugger(False)
     debugHelp('\ndebugger passed options: ' + str(options))
     debugHelp('debugger passed args: '    + str(args))
     if len(args) < 1 and options.filter == "" and options.targets == "":
-        parser.error("You must provie a target! Use -h for help.")
+        parser.error("You must provide a target! Use -h for help.")
 
     if options.filter != "":
         #cleanup this file and print it out
@@ -339,7 +399,7 @@ def main():
     elif len(hosts) > 99:
         debugHelp('hosts = a really damn big list, so big that I\'m omitting it!')
     debugHelp('Checking resolvers...')
-    resolve_list = check_resolvers(options.resolvers)
+    resolve_list = check_resolvers(options.resolvers,debugHelp)
     debugHelp('main() got list of resolvers: ' + str(resolve_list) + ' from check_resolvers')
     #threads = []#is this even needed?
     signal.signal(signal.SIGINT, killme)
@@ -349,21 +409,28 @@ def main():
         
         if target:
             if options.output_file != "":
-                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, not NO_OUTPUT)
+                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, not NO_OUTPUT, debugHelp)
             elif options.output_file == "":
-                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, NO_OUTPUT)
+                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, NO_OUTPUT, debugHelp)
             #if options.sendto_email != "":
                 #send_mail(options.sendto_email,options.sendto_email,"domains","text",[options.output_file], "localhost")
 
-def debugHelp(*args):
-    '''if DEBUG_MODE == True, this function prints parameter(s) to screen'''
-    if DEBUG_MODE:
-        stringToPrint = ''
-        for arg in args:
-            stringToPrint += str(arg)
-        print(stringToPrint)
+def isDebugger(boolVal):
+    '''ugly hack for debugging - this is MAJOR code smell!'''
+    if boolVal:
+        def debugHelp(*args):
+            '''if DEBUG_MODE == True, this function prints parameter(s) to screen'''
+            stringToPrint = ''
+            for arg in args:
+                stringToPrint += str(arg)
+            print(stringToPrint)
+        return debugHelp
     else:
-        pass
+        def debugHelp(*args):
+            pass
+        return debugHelp
+
 
 if __name__ == "__main__":
+
     main()
