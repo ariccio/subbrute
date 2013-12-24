@@ -19,6 +19,7 @@ import sys
 import random
 import dns.resolver
 import platform
+import logging
 
 '''
 import smtplib
@@ -47,7 +48,9 @@ if v[0].isdigit():
 #except ImportError:
 #    import Queue as queue
     
-    
+
+logging.basicConfig(level=logging.DEBUG)
+
 NO_OUTPUT  = True
 DEBUG_MODE = True
 
@@ -75,10 +78,12 @@ class lookup(Thread):
             self.backup_resolver = ['127.0.0.1']
         if len(self.resolver_list) > 0:
             self.resolver.nameservers = self.resolver_list
+        logging.debug(str('\t\tlookup thread instantiated! TID: ' + str(self.tid)))
 
     def check(self, host, debugHelp):
         '''Query DNS resolver(s), if no answer or timeout, backoff  2^numTries '''
         slept = 0
+        logging.debug(str('\t\t\tthread ' + str(self.tid) + ' checking \'' + str(host) + '\''))
         while True:
             try:
                 answer = self.resolver.query(host)
@@ -194,7 +199,7 @@ def extract_subdomains(file_name):
 
 def check_resolvers(file_name, debugHelp):
     '''validates given list of DNS resolvers'''
-    debugHelp('\t ' + 'check_resolvers(file_name) passed: ' + file_name)
+    logging.debug('\t ' + 'check_resolvers(file_name) passed: ' + file_name)
     ret = []
     lines = []
     lineClean = []    
@@ -222,7 +227,7 @@ def check_resolvers(file_name, debugHelp):
     #for server in res_file.split("\n"):
         #debugHelp('\t\t selected server ' + server)
         #server = server.strip()
-    debugHelp('\t\tfor all servers in list of resolvers, resolver.nameservers = ' + str(lineClean))
+    logging.debug('\t\tfor all servers in list of resolvers, resolver.nameservers = ' + str(lineClean))
     for server in lineClean:
         resolver.nameservers = [server]
         #debugHelp('\t\tresolver.nameservers = ' + str(resolver.nameservers))
@@ -231,9 +236,9 @@ def check_resolvers(file_name, debugHelp):
             #should throw an exception before this line.
             ret.append(server)
         except dns.resolver.NXDOMAIN:
-            debugHelp('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
+            logging.warning('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
         except:
-            debugHelp('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
+            logging.warning('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
             debugHelp(sys.exc_type)
             debugHelp(sys.exc_value)
             debugHelp(sys.exc_traceback)
@@ -252,34 +257,34 @@ def print_to_file(output,aFile):
 def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debugHelp):
     '''run subdomain bruteforce lookup against a specified target domain'''
     if thread_count < 1:
-        debugHelp(__name__ + ' passed thread_count: ' + str(thread_count) + ' - we NEED at least 1 thread. Setting thread_count to 1')
+        logging.warning(__name__ + ' passed thread_count: ' + str(thread_count) + ' - we NEED at least 1 thread. Setting thread_count to 1')
         thread_count = 1
     if len(hosts) < 100:
-        debugHelp('\nbegin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + str(hosts) + ' ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput))
+        logging.debug('begin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + str(hosts) + ' ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput))
     elif len(hosts) >=99:
-        debugHelp('\nbegin ' + 'run_target(target ' + str(target) + ', hosts' + '<huge hosts list! Omitting it!> , resolve_list ' + str(resolve_list) + ', thread_count ' + str(thread_count),  ', aFile ' + str(aFile), ', noOutput ' + str(noOutput))
+        logging.debug('begin ' + 'run_target(target ' + str(target) + ', hosts' + '<huge hosts list! Omitting it!> , resolve_list ' + str(resolve_list) + ', thread_count ' + str(thread_count) +  ', aFile ' + str(aFile) + ', noOutput ' + str(noOutput))
     try:
         resp = dns.resolver.Resolver().query(target)
         
     except dns.resolver.NXDOMAIN:
-        print("CRITICAL: Domain  ( " + target + " ) not found!", file=sys.stderr)
-        print("I can't find domain ( " + target + " )! I can't check for subdomains of an unknown domain!")
+        print('CRITICAL: Domain  ( ' + target + ' ) not found!', file=sys.stderr)
+        print('I can\'t find domain ( ' + target + ' )! I can\'t check for subdomains of an unknown domain!')
         return
     #The target might have a wildcard dns record...
     wildcard = False
     try:
         #hasWildcard = False
-        resp = dns.resolver.Resolver().query("would-never-be-a-fucking-domain-name-" + str(random.randint(1, 9999)) + "." + target)
+        resp = dns.resolver.Resolver().query('would-never-be-a-fucking-domain-name-' + str(random.randint(1, 9999)) + '.' + target)
         wildcard = str(resp[0])
-        debugHelp('wildcard got ' + str(wildcard) +'\n\n')
+        logging.debug('wildcard got ' + str(wildcard) +'\n\n')
     except dns.resolver.NXDOMAIN:
-        debugHelp('wildcard got ' + str(wildcard) +'\n\n')
-        print("Target ( " + target + " ) doesn't seem to redirect nonsense subdomains! (else our results would be invalid)")
+        logging.debug('wildcard got ' + str(wildcard) +'\n\n')
+        logging.info("Target ( " + str(target) + " ) doesn't seem to redirect nonsense subdomains! (else our results would be invalid)")
         #hasWildcard = False
     except:
-        debugHelp('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
+        logging.error('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
     if wildcard != ("" or False):
-        debugHelp('wildcard !="" : ' + str(wildcard))
+        logging.warning('wildcard !="" : ' + str(wildcard))
         print("Target ( " + target + " ) seems to redirect nonsense subdomains! (our results will be invalid!) Skipping")
         return
     in_q = queue.Queue()
@@ -290,18 +295,18 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debug
     #Terminate the queue
     in_q.put(False)
     step_size = int(len(resolve_list) / thread_count)
-    debugHelp('\tchose step size: ' + str(step_size))
+    logging.debug('\tchose step size: ' + str(step_size))
     #Split up the resolver list between the threads. 
     if step_size <= 0:
         step_size = 1
     step = 0
     threads = []
-    debugHelp('\t                                                lookup( ' + 'target,\t\t' + 'wildcard,\t' + 'resolve_list[step:step + step_size]' +' )')
+    logging.debug('\t                                                lookup( ' + 'target,\t\t' + 'wildcard,\t' + 'resolve_list[step:step + step_size]' +' )')
     for tid in range(thread_count):#underscore is python convention for unused variable
-        debugHelp('\tAppending new lookup object to list of threads, lookup( ' + str(target) + ',\t' + str(wildcard) + ',\t\t' + str(resolve_list[step:step + step_size]) +' )')
+        logging.debug('\tAppending new lookup object to list of threads, lookup( ' + str(target) + ',\t' + str(wildcard) + ',\t\t' + str(resolve_list[step:step + step_size]) +' )')
         threads.append( lookup( in_q, out_q, target, debugHelp, tid,  wildcard , resolve_list[step:step + step_size] ) )
         threads[-1].start()
-    debugHelp('\tstep (now ' + str(step) + ') incrementing by step_size (' + str(step_size) + ')')
+    logging.debug('\tstep (now ' + str(step) + ') incrementing by step_size (' + str(step_size) + ')')
     step += step_size
     if step >= len(resolve_list):
         step = 0
@@ -314,7 +319,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debug
             #debugHelp('\t\t\tIt looks like this thread has exhausted it\'s queue')
             #we will get an empty exception before this runs. 
             if not d:
-                debugHelp('Not d! - d=' + str(d))
+                logging.info('Not d! - d=' + str(d))
                 threads_remaining -= 1
             else:
                 print(d)
@@ -327,7 +332,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debug
             #debugHelp('\t\t\tA thread has exhausted it\'s q of subdomains to bruteforce')
         #make sure everyone is complete
             if threads_remaining <= 0:
-                debugHelp('No threads remaining!')
+                logging.info('No threads remaining!')
                 break
 
 
@@ -393,19 +398,20 @@ def main():
 
     if options.targets != "":
         targets = open(options.targets).read().split("\n")
-        debugHelp('options.targets !="", targets = ' + str(targets))
+        logging.info('options.targets !="", targets = ' + str(targets))
     else:
         targets = args #multiple arguments on the cli:  ./subbrute.py google.com gmail.com yahoo.com
-        debugHelp('"multiple arguments on the cli", targets = ' + str(targets))
+        logging.debug('"[...]arguments on the cli", targets = ' + str(targets))
+        #TODO: wtf is actually going on here
                   
     hosts = open(options.subs).read().split("\n")
     if len(hosts) < 100:
-        debugHelp('hosts = ' + str(hosts))
+        logging.debug('hosts = ' + str(hosts))
     elif len(hosts) > 99:
-        debugHelp('hosts = a really damn big list, so big that I\'m omitting it!')
-    debugHelp('Checking resolvers...')
+        logging.debug('hosts = a really damn big list, so big that I\'m omitting it!')
+    logging.info('Checking resolvers...')
     resolve_list = check_resolvers(options.resolvers,debugHelp)
-    debugHelp('main() got list of resolvers: ' + str(resolve_list) + ' from check_resolvers')
+    logging.debug('main() got list of resolvers: ' + str(resolve_list) + ' from check_resolvers')
     #threads = []#is this even needed?
     signal.signal(signal.SIGINT, killme)
 
