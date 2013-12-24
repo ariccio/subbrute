@@ -1,4 +1,4 @@
-#!C:\Python27\python.exe
+#!C:\Python33\python.exe
 '''
 !/usr/bin/python
 
@@ -268,15 +268,20 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debug
     #The target might have a wildcard dns record...
     wildcard = False
     try:
+        #hasWildcard = False
         resp = dns.resolver.Resolver().query("would-never-be-a-fucking-domain-name-" + str(random.randint(1, 9999)) + "." + target)
         wildcard = str(resp[0])
-        debugHelp('wildcard got ' + str(wildcard))
+        debugHelp('wildcard got ' + str(wildcard) +'\n\n')
     except dns.resolver.NXDOMAIN:
-        
+        debugHelp('wildcard got ' + str(wildcard) +'\n\n')
         print("Target ( " + target + " ) doesn't seem to redirect nonsense subdomains! (else our results would be invalid)")
-        
+        #hasWildcard = False
     except:
         debugHelp('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
+    if wildcard != ("" or False):
+        debugHelp('wildcard !="" : ' + str(wildcard))
+        print("Target ( " + target + " ) seems to redirect nonsense subdomains! (our results will be invalid!) Skipping")
+        return
     in_q = queue.Queue()
     out_q = queue.Queue()
     for h in hosts:#puts all known subdomains into in_q
