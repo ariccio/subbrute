@@ -49,7 +49,7 @@ if v[0].isdigit():
 #    import Queue as queue
     
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 NO_OUTPUT  = True
 DEBUG_MODE = True
@@ -78,7 +78,7 @@ class lookup(Thread):
             self.backup_resolver = ['127.0.0.1']
         if len(self.resolver_list) > 0:
             self.resolver.nameservers = self.resolver_list
-        logging.debug(str('\t\tlookup thread instantiated! TID: ' + str(self.tid)))
+        logging.debug(str('\t\tlookup thread instantiated! thread : ' + str(self.tid)))
 
     def check(self, host, debugHelp):
         '''Query DNS resolver(s), if no answer or timeout, backoff  2^numTries '''
@@ -87,14 +87,15 @@ class lookup(Thread):
         while True:
             try:
                 answer = self.resolver.query(host)
+                logging.debug(str('\t\t\t\tthread ' + str(self.tid) + ' got answer: \'' + str(answer[0]) + '\' for host: \'' + str(host) + '\'!'))
                 if answer:
                     return str(answer[0])
                 else:
                     return False
             except Exception as e:
                 if type(e) == dns.resolver.NXDOMAIN:
-                    #not found
-                    pass
+                    logging.debug(str('\t\t\t\tthread ' + str(self.tid) + ' couldn\'t resolve host: \'' + str(host) + '\'!'))
+                    return False
 
                 elif type(e) == dns.resolver.NoAnswer  or type(e) == dns.resolver.Timeout:
                     if slept == 4:
@@ -114,8 +115,8 @@ class lookup(Thread):
                         #I don't think we are ever guaranteed a response for a given name.
                         return False
                     #Hmm,  we might have hit a rate limit on a resolver.
-                    debugHelp('\t\tTID' + self.tid +':\twe might have hit a rate limit on a resolver!')
-                    debugHelp('\t\tTID' + self.tid + ':\tsleeping ' + str(math.pow(2,slept)))
+                    debugHelp('\t\tthread ' + str(self.tid) +':\twe might have hit a rate limit on a resolver!')
+                    debugHelp('\t\tthread ' + str(self.tid) + ':\tsleeping ' + str(math.pow(2,slept)))
                     time.sleep(math.pow(2, slept))
                     slept += 1
                     #retry...
@@ -128,7 +129,7 @@ class lookup(Thread):
                     pass
                 elif type(e) == dns.resolver.NoNameServers:
                     #no non-broken nameservers are available to answer the question
-                    print("TID" + self.tid + ":\tNoNameServers!", file=sys.stderr)
+                    print("thread " + self.tid + ":\tNoNameServers!", file=sys.stderr)
                 else:
                     #dnspython threw some strange exception...
                     raise e
@@ -148,7 +149,7 @@ class lookup(Thread):
             sub = self.in_q.get()
             #debugHelp('\t\tsub = ' + str(sub))
             if not sub:
-                self.debugHelp('\t\t\tTID' + self.tid + ':\tnot sub!')
+                logging.debug('\t\t\tthread ' + str(self.tid) + ':\tnot sub!')
                 #Perpetuate the terminator for all threads to see
                 self.in_q.put(False)
                 #Notify the parent of our death of natural causes.
@@ -156,10 +157,10 @@ class lookup(Thread):
                 break
             else:
                 test = "%s.%s" % (sub, self.domain)
-                self.debugHelp('\n\t\tTID' + str(self.tid) +':\tTesting ' + str(test) + ' ......\n')
+                #logging.debug('\n\t\tthread ' + str(self.tid) +':\tTesting ' + str(test) + ' ......\n')
                 addr = self.check(test, self.debugHelp)
                 if addr and addr != self.wildcard:
-                    self.debugHelp('\n\t\t\tTID' + str(self.tid) + ':\t'+ str(test) + 'is valid! putting in out_q')
+                    logging.debug('\t\t\t\tthread ' + str(self.tid) + ':\t\''+ str(test) + '\' is valid! putting in out_q')
                     self.out_q.put(test)
 
 
