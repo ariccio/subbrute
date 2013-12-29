@@ -84,11 +84,11 @@ class lookup(Thread):
                 else:
                     return False
             except Exception as e:
-                if type(e) == dns.resolver.NXDOMAIN:
-                    logging.debug(str('\t\t\t\tthread ' + str(self.__tid) + ' couldn\'t resolve host: \'' + str(host) + '\'!'))
+                if type(e) == dns.exception.DNSException.NXDOMAIN:
+                    logging.debug(str('\t\t\t\tthread ' + str(self.__tid) + ' couldn\'t resolve host: \'' + str(host) + '\' with resolver' + str(self.__resolver_list) + '!'))
                     return False
 
-                elif type(e) == dns.resolver.NoAnswer  or type(e) == dns.resolver.Timeout:
+                elif type(e) == dns.exception.DNSException.NoAnswer  or type(e) == dns.exception.DNSException.Timeout:
                     if slept == 4:
                         #This dns server stopped responding. We could be hitting a rate limit.
                         if self.__resolver.nameservers == self.backup_resolver:
@@ -111,17 +111,16 @@ class lookup(Thread):
                 elif type(e) == IndexError:
                     #Some old versions of dnspython throw this error, doesn't seem to affect the results,  and it was fixed in later versions.
                     pass
-                elif type(e) == dns.resolver.YXDOMAIN:
+                elif type(e) == dns.exception.DNSException.YXDOMAIN:
                     #the query name is too long after DNAME substitution
                     pass
-                elif type(e) == dns.resolver.NoNameServers:
+                elif type(e) == dns.exception.DNSException.NoNameServers:
                     #no non-broken nameservers are available to answer the question
                     logging.error("thread " + self.__tid + ":\tNoNameServers!", file=sys.stderr)
                 else:
                     #dnspython threw some strange exception...
                     logging.error('Unknown exception in thread ' + str(self.__tid) + '! Something is very wrong!') 
                     logging.warning(sys.exc_type)
-                    logging.warning(sys.exc_value)
                     logging.warning(sys.exc_traceback)
                     raise e
 
@@ -218,19 +217,27 @@ def check_resolvers(file_name):
         lineClean.append(lineProc[0])
         
     logging.debug('\t\tfor all servers in list of resolvers, resolver.nameservers = ' + str(lineClean))
-
+    resolverQuery = "www.google.com"
     for server in lineClean:
         resolver.nameservers = [server]
         try:
-            resolver.query("www.google.com")
+            logging.debug('\t\t\tChecking resolver ' + str(server) + '...')            
+            resolver.query(resolverQuery)
             #should throw an exception before this line.
             ret.append(server)
         except dns.resolver.NXDOMAIN:
-            logging.warning('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
+            #logging.warning('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolver ' + str(server))
+            logging.info('\t\t\t\tresolver ' + str(server) + ' failed to resolve ' + str(resolverQuery))
+            #ret.remove(server)
+        except dns.resolver.NoNameservers:
+            #"No non-broken nameservers are available to answer the query."
+            logging.info('\t\t\t\tresolver ' + str(server) + ' failed to resolve ' + str(resolverQuery))
+            #ret.remove(server)
+        except KeyboardInterrupt:
+            sys.exit('Caught keyboard interrupt!')
         except:
-            logging.warning('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
+            logging.warning('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolver ' + str(server))
             logging.warning(sys.exc_type)
-            logging.warning(sys.exc_value)
             logging.warning(sys.exc_traceback)
     return ret
 
@@ -274,7 +281,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
             logging.debug('wildcard got ' + str(wildcard) +'\n\n')
         except dns.resolver.NXDOMAIN:
             logging.debug('wildcard got ' + str(wildcard) +'\n\n')
-            logging.info("Target ( " + str(target) + " ) doesn't seem to redirect nonsense subdomains! (else our results would be invalid)")
+            logging.info("Target ( " + str(target) + " ) doesn't seem to redirect nonsense subdomains with resolver" + str(resolver) + "! (else our results would be invalid)")
             
         except:
             logging.error('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
