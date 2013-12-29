@@ -8,6 +8,9 @@ A (very) fast subdomain enumeration tool.
 Written by Rook
 Forked by jeremyBass
 Forked by Alexander Riccio
+
+"\'if done is not None\' is faster than \'if done != None\', which in turn is faster than \'if not done\'." - http://www.clips.ua.ac.be/tutorials/python-performance-optimization
+
 '''
 from __future__ import print_function
 import re
@@ -60,63 +63,62 @@ def killme(_, _unused):
     os.kill(os.getpid(), 9)
 
 class lookup(Thread):
-    '''instantiates new lookup thread'''
-    def __init__(self, in_q, out_q, domain, debugHelp, tid, wildcard = False, resolver_list = []):
+    '''an object that represents a single lookup thread'''
+    def __init__(self, in_q, out_q, domain, tid, wildcard = False, resolver_list = []):
         Thread.__init__(self)
-        self.in_q = in_q
-        self.out_q = out_q
-        self.domain = domain
-        self.wildcard = wildcard
-        self.resolver_list = resolver_list
-        self.resolver = dns.resolver.Resolver()
-        self.debugHelp = debugHelp
-        self.tid = tid
-        if len(self.resolver.nameservers) > 0:
-            self.backup_resolver = self.resolver.nameservers
+        self.__in_q = in_q
+        self.__out_q = out_q
+        self.__domain = domain
+        self.__wildcard = wildcard
+        self.__resolver_list = resolver_list
+        self.__resolver = dns.resolver.Resolver()
+        self.__tid = tid
+        if len(self.__resolver.nameservers) > 0:
+            self.backup_resolver = self.__resolver.nameservers
         else:
             #we must have a resolver,  and this is the default resolver on my system...
             self.backup_resolver = ['127.0.0.1']
-        if len(self.resolver_list) > 0:
-            self.resolver.nameservers = self.resolver_list
-        logging.debug(str('\t\tlookup thread instantiated! thread : ' + str(self.tid)))
+        if len(self.__resolver_list) > 0:
+            self.__resolver.nameservers = self.__resolver_list
+        logging.debug(str('\t\tlookup thread instantiated! thread : ' + str(self.__tid)))
 
-    def check(self, host, debugHelp):
+    def check(self, host):
         '''Query DNS resolver(s), if no answer or timeout, backoff  2^numTries '''
         slept = 0
-        logging.debug(str('\t\t\tthread ' + str(self.tid) + ' checking \'' + str(host) + '\''))
+        logging.debug(str('\t\t\tthread ' + str(self.__tid) + ' checking \'' + str(host) + '\''))
         while True:
             try:
-                answer = self.resolver.query(host)
-                logging.debug(str('\t\t\t\tthread ' + str(self.tid) + ' got answer: \'' + str(answer[0]) + '\' for host: \'' + str(host) + '\'!'))
+                answer = self.__resolver.query(host)
+                logging.debug(str('\t\t\t\tthread ' + str(self.__tid) + ' got answer: \'' + str(answer[0]) + '\' for host: \'' + str(host) + '\'!'))
                 if answer:
                     return str(answer[0])
                 else:
                     return False
             except Exception as e:
                 if type(e) == dns.resolver.NXDOMAIN:
-                    logging.debug(str('\t\t\t\tthread ' + str(self.tid) + ' couldn\'t resolve host: \'' + str(host) + '\'!'))
+                    logging.debug(str('\t\t\t\tthread ' + str(self.__tid) + ' couldn\'t resolve host: \'' + str(host) + '\'!'))
                     return False
 
                 elif type(e) == dns.resolver.NoAnswer  or type(e) == dns.resolver.Timeout:
                     if slept == 4:
                         #This dns server stopped responding.
                         #We could be hitting a rate limit.
-                        if self.resolver.nameservers == self.backup_resolver:
+                        if self.__resolver.nameservers == self.backup_resolver:
                             #if we are already using the backup_resolver use the resolver_list
-                            self.resolver.nameservers = self.resolver_list
+                            self.__resolver.nameservers = self.__resolver_list
                         else:
                             #fall back on the system's dns name server
-                            self.resolver.nameservers = self.backup_resolver
+                            self.__resolver.nameservers = self.backup_resolver
                     elif slept > 5:
                         #hmm the backup resolver didn't work, 
                         #so lets go back to the resolver_list provided.
                         #If the self.backup_resolver list did work, lets stick with it.
-                        self.resolver.nameservers = self.resolver_list
+                        self.__resolver.nameservers = self.__resolver_list
                         #I don't think we are ever guaranteed a response for a given name.
                         return False
                     #Hmm,  we might have hit a rate limit on a resolver.
-                    debugHelp('\t\tthread ' + str(self.tid) +':\twe might have hit a rate limit on a resolver!')
-                    debugHelp('\t\tthread ' + str(self.tid) + ':\tsleeping ' + str(math.pow(2,slept)))
+                    logging.info('\t\tthread ' + str(self.__tid) +':\twe might have hit a rate limit on a resolver!')
+                    logging.info('\t\tthread ' + str(self.__tid) + ':\tsleeping ' + str(math.pow(2,slept)))
                     time.sleep(math.pow(2, slept))
                     slept += 1
                     #retry...
@@ -129,7 +131,7 @@ class lookup(Thread):
                     pass
                 elif type(e) == dns.resolver.NoNameServers:
                     #no non-broken nameservers are available to answer the question
-                    print("thread " + self.tid + ":\tNoNameServers!", file=sys.stderr)
+                    print("thread " + self.__tid + ":\tNoNameServers!", file=sys.stderr)
                 else:
                     #dnspython threw some strange exception...
                     raise e
@@ -146,22 +148,21 @@ class lookup(Thread):
                  |      from the args and kwargs arguments, respectively.'''
 
         while True:
-            sub = self.in_q.get()
-            #debugHelp('\t\tsub = ' + str(sub))
+            sub = self.__in_q.get()
             if not sub:
-                logging.debug('\t\t\tthread ' + str(self.tid) + ':\tnot sub!')
+                logging.debug('\t\t\tthread ' + str(self.__tid) + ':\tnot sub!')
                 #Perpetuate the terminator for all threads to see
-                self.in_q.put(False)
+                self.__in_q.put(False)
                 #Notify the parent of our death of natural causes.
-                self.out_q.put(False)
+                self.__out_q.put(False)
                 break
             else:
-                test = "%s.%s" % (sub, self.domain)
-                #logging.debug('\n\t\tthread ' + str(self.tid) +':\tTesting ' + str(test) + ' ......\n')
-                addr = self.check(test, self.debugHelp)
-                if addr and addr != self.wildcard:
-                    logging.debug('\t\t\t\tthread ' + str(self.tid) + ':\t\''+ str(test) + '\' is valid! putting in out_q')
-                    self.out_q.put(test)
+                test = "%s.%s" % (sub, self.__domain)
+                #logging.debug('\n\t\tthread ' + str(self.__tid) +':\tTesting ' + str(test) + ' ......\n')
+                addr = self.check(test)
+                if addr and addr != self.__wildcard:
+                    logging.debug('\t\t\t\tthread ' + str(self.__tid) + ':\t\''+ str(test) + '\' is valid! putting in out_q')
+                    self.__out_q.put(test)
 
 
 def extract_subdomains(file_name):
@@ -198,7 +199,7 @@ def extract_subdomains(file_name):
     subs_sorted = sorted(subs.keys(), key = lambda x: subs[x], reverse = True)
     return subs_sorted
 
-def check_resolvers(file_name, debugHelp):
+def check_resolvers(file_name):
     '''validates given list of DNS resolvers'''
     logging.debug('\t ' + 'check_resolvers(file_name) passed: ' + file_name)
     ret = []
@@ -226,12 +227,10 @@ def check_resolvers(file_name, debugHelp):
     
     #res_file = open(file_name).read()
     #for server in res_file.split("\n"):
-        #debugHelp('\t\t selected server ' + server)
         #server = server.strip()
     logging.debug('\t\tfor all servers in list of resolvers, resolver.nameservers = ' + str(lineClean))
     for server in lineClean:
         resolver.nameservers = [server]
-        #debugHelp('\t\tresolver.nameservers = ' + str(resolver.nameservers))
         try:
             resolver.query("www.google.com")
             #should throw an exception before this line.
@@ -240,9 +239,9 @@ def check_resolvers(file_name, debugHelp):
             logging.warning('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
         except:
             logging.warning('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolvers')
-            debugHelp(sys.exc_type)
-            debugHelp(sys.exc_value)
-            debugHelp(sys.exc_traceback)
+            logging.warning(sys.exc_type)
+            logging.warning(sys.exc_value)
+            logging.warning(sys.exc_traceback)
     return ret
 
 def print_to_file(output,aFile):
@@ -255,7 +254,7 @@ def print_to_file(output,aFile):
     f.close()
 
 
-def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debugHelp):
+def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     '''run subdomain bruteforce lookup against a specified target domain'''
     if thread_count < 1:
         logging.warning(__name__ + ' passed thread_count: ' + str(thread_count) + ' - we NEED at least 1 thread. Setting thread_count to 1')
@@ -291,7 +290,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debug
     in_q = queue.Queue()
     out_q = queue.Queue()
     for h in hosts:#puts all known subdomains into in_q
-        #debugHelp('\t\t\tputting h ' + str(h) + ' from hosts into in_q')
+        logging.debug('\t\t\tputting h ' + str(h) + ' from hosts into in_q')
         in_q.put(h)
     #Terminate the queue
     in_q.put(False)
@@ -305,7 +304,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debug
     logging.debug('\t                                                lookup( ' + 'target,\t\t' + 'wildcard,\t' + 'resolve_list[step:step + step_size]' +' )')
     for tid in range(thread_count):#underscore is python convention for unused variable
         logging.debug('\tAppending new lookup object to list of threads, lookup( ' + str(target) + ',\t' + str(wildcard) + ',\t\t' + str(resolve_list[step:step + step_size]) +' )')
-        threads.append( lookup( in_q, out_q, target, debugHelp, tid,  wildcard , resolve_list[step:step + step_size] ) )
+        threads.append( lookup( in_q, out_q, target, tid,  wildcard , resolve_list[step:step + step_size] ) )
         threads[-1].start()
     logging.debug('\tstep (now ' + str(step) + ') incrementing by step_size (' + str(step_size) + ')')
     step += step_size
@@ -326,7 +325,6 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput, debug
                 print(d)
                 if d:
                     pass
-                    #debugHelp('\t\tdomain: ' + str(d) + ' is valid!')
                 if not noOutput:
                     print_to_file(d,aFile)
         except queue.Empty:
@@ -386,8 +384,8 @@ def main():
         debugHelp = isDebugger(True)
     else:
         debugHelp = isDebugger(False)
-    debugHelp('\ndebugger passed options: ' + str(options))
-    debugHelp('debugger passed args: '    + str(args))
+    logging.debug('\ndebugger passed options: ' + str(options))
+    logging.debug('debugger passed args: '    + str(args))
     if len(args) < 1 and options.filter == "" and options.targets == "":
         parser.error("You must provide a target! Use -h for help.")
 
@@ -411,7 +409,7 @@ def main():
     elif len(hosts) > 99:
         logging.debug('hosts = a really damn big list, so big that I\'m omitting it!')
     logging.info('Checking resolvers...')
-    resolve_list = check_resolvers(options.resolvers,debugHelp)
+    resolve_list = check_resolvers(options.resolvers)
     logging.debug('main() got list of resolvers: ' + str(resolve_list) + ' from check_resolvers')
     #threads = []#is this even needed?
     signal.signal(signal.SIGINT, killme)
@@ -421,9 +419,9 @@ def main():
         
         if target:
             if options.output_file != "":
-                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, not NO_OUTPUT, debugHelp)
+                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, not NO_OUTPUT)
             elif options.output_file == "":
-                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, NO_OUTPUT, debugHelp)
+                run_target(target, hosts, resolve_list, options.thread_count, options.output_file, NO_OUTPUT)
             #if options.sendto_email != "":
                 #send_mail(options.sendto_email,options.sendto_email,"domains","text",[options.output_file], "localhost")
 
