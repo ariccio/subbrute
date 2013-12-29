@@ -2,7 +2,7 @@ subdomain-bruteforcer v1.0
 =====================
 Documentation as written by TheRook
 
-This is a (fast) multi-threaded python tool for enumerating subdomains.  This tool also contains a large list of real subdomains that you will find in the wild.  Basically I was fed up with fierce / fierce2, and every other tool I used so I wrote something way faster in python.   This tool will "just work",  and work well.   By default this tool performs subdomain enumeration about 8 times faster than Fierce, and can chew through 31k lookups in about 5 minutes on a home cable connection.
+This is a (fast) multi-threaded python tool for enumerating subdomains.  This tool also contains a large list of real subdomains that you will find in the wild.  Basically I was fed up with fierce / fierce2, and every other tool I used so I wrote something way faster in python.   This tool will "just work",  and work well.   By default this tool performs subdomain enumeration about 8 times faster than Fierce, and can chew through 31k lookups in about 2.5 minutes (ariccio) ~~5 minutes~~ on a home cable connection.
 
 Why is this tool so fast?
 
