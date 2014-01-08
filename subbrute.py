@@ -73,6 +73,7 @@ class lookup(Thread):
 
     def check(self, host):
         '''Query DNS resolver(s), if no answer or timeout, backoff  2^numTries '''
+        #TODO: refactor this method
         slept = 0
         logging.debug(str('\t\t\tthread ' + str(self.__tid) + ' checking \'' + str(host) + '\''))
         while True:
@@ -83,46 +84,50 @@ class lookup(Thread):
                     return str(answer[0])
                 else:
                     return False
-            except Exception as e:
-                if type(e) == dns.exception.DNSException.NXDOMAIN:
-                    logging.debug(str('\t\t\t\tthread ' + str(self.__tid) + ' couldn\'t resolve host: \'' + str(host) + '\' with resolver' + str(self.__resolver_list) + '!'))
-                    return False
+            except dns.resolver.NXDOMAIN:
+                logging.debug(str('\t\t\t\tthread ' + str(self.__tid) + ' couldn\'t resolve host: \'' + str(host) + '\' with resolver' + str(self.__resolver_list) + '!'))
+                return False
 
-                elif type(e) == dns.exception.DNSException.NoAnswer  or type(e) == dns.exception.DNSException.Timeout:
-                    if slept == 4:
-                        #This dns server stopped responding. We could be hitting a rate limit.
-                        if self.__resolver.nameservers == self.backup_resolver:
-                            #if we are already using the backup_resolver use the resolver_list
-                            self.__resolver.nameservers = self.__resolver_list
-                        else:
-                            #fall back on the system's dns name server
-                            self.__resolver.nameservers = self.backup_resolver
-                    elif slept > 5:
-                        #hmm the backup resolver didn't work, so lets go back to the resolver_list provided.
-                        #If the self.backup_resolver list did work, lets stick with it.
+            except (dns.resolver.NoAnswer, dns.resolver.Timeout):
+                if slept == 4:
+                    #This dns server stopped responding. We could be hitting a rate limit.
+                    if self.__resolver.nameservers == self.backup_resolver:
+                        #if we are already using the backup_resolver use the resolver_list
                         self.__resolver.nameservers = self.__resolver_list
-                        return False
-                    
-                    logging.info('\t\tthread ' + str(self.__tid) +':\twe might have hit a rate limit on a resolver!')
-                    logging.info('\t\tthread ' + str(self.__tid) + ':\tsleeping ' + str(math.pow(2,slept)))
-                    time.sleep(math.pow(2, slept))
-                    slept += 1
-                    #retry...
-                elif type(e) == IndexError:
-                    #Some old versions of dnspython throw this error, doesn't seem to affect the results,  and it was fixed in later versions.
-                    pass
-                elif type(e) == dns.exception.DNSException.YXDOMAIN:
-                    #the query name is too long after DNAME substitution
-                    pass
-                elif type(e) == dns.exception.DNSException.NoNameServers:
-                    #no non-broken nameservers are available to answer the question
-                    logging.error("thread " + self.__tid + ":\tNoNameServers!", file=sys.stderr)
-                else:
-                    #dnspython threw some strange exception...
-                    logging.error('Unknown exception in thread ' + str(self.__tid) + '! Something is very wrong!') 
-                    logging.warning(sys.exc_type)
-                    logging.warning(sys.exc_traceback)
-                    raise e
+                    else:
+                        #fall back on the system's dns name server
+                        self.__resolver.nameservers = self.backup_resolver
+                elif slept > 5:
+                    #hmm the backup resolver didn't work, so lets go back to the resolver_list provided.
+                    #If the self.backup_resolver list did work, lets stick with it.
+                    self.__resolver.nameservers = self.__resolver_list
+                    return False
+                
+                logging.info('\t\tthread ' + str(self.__tid) +':\twe might have hit a rate limit on a resolver!')
+                logging.info('\t\tthread ' + str(self.__tid) + ':\tsleeping ' + str(math.pow(2,slept)))
+                time.sleep(math.pow(2, slept))
+                slept += 1
+                #retry...
+            except IndexError:
+                #Some old versions of dnspython throw this error, doesn't seem to affect the results,  and it was fixed in later versions.
+                pass
+            except dns.resolver.YXDOMAIN:
+                #the query name is too long after DNAME substitution
+                pass
+            except dns.resolver.NoNameServers:
+                #no non-broken nameservers are available to answer the question
+                logging.error("thread " + self.__tid + ":\tNoNameServers!", file=sys.stderr)
+            except AttributeError:
+                #logging.CRITICAL('wtf')
+                #killme(None,None)
+                logging.error(sys.exc_info())
+                os.abort()
+            except:
+                #dnspython threw some strange exception...
+                logging.error('Unknown exception in thread ' + str(self.__tid) + '! Something is very wrong!') 
+                logging.warning(sys.exc_type)
+                logging.warning(sys.exc_traceback)
+                sys.exit(self.__tid)
 
     def run(self):
         '''this method OVERRIDES threading.thread.run(self)
@@ -149,7 +154,13 @@ class lookup(Thread):
                 break
             else:
                 test = "%s.%s" % (sub, self.__domain)
-                addr = self.check(test)
+                try:
+                    addr = self.check(test)
+                except AttributeError:
+                    #logging.debug('wtf')
+                    logging.error(sys.exc_info())
+                    os.abort()
+                    #sys.exit(self.__tid)
                 if addr and addr != self.__wildcard:
                     logging.debug('\t\t\t\tthread ' + str(self.__tid) + ':\t\''+ str(test) + '\' is valid! putting in out_q')
                     self.__out_q.put(test)
@@ -194,6 +205,7 @@ def check_resolvers(file_name):
     '''validates list of DNS resolvers in given file_name, one per line
        uses my (to-be-improved) line processing algorithm
     '''
+    #TODO: refactor this ugly function
     logging.debug('\t ' + 'check_resolvers(file_name) passed: ' + file_name)
     ret = []
     lines = []
@@ -216,7 +228,7 @@ def check_resolvers(file_name):
                 lineProc[1] = word
         lineClean.append(lineProc[0])
         
-    logging.debug('\t\tfor all servers in list of resolvers, resolver.nameservers = ' + str(lineClean))
+    logging.debug('\t\tfor all servers in list of resolvers, resolver.nameservers = ' + str(lineClean) + '\n')
     resolverQuery = "www.google.com"
     for server in lineClean:
         resolver.nameservers = [server]
@@ -227,11 +239,11 @@ def check_resolvers(file_name):
             ret.append(server)
         except dns.resolver.NXDOMAIN:
             #logging.warning('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking resolver ' + str(server))
-            logging.info('\t\t\t\tresolver ' + str(server) + ' failed to resolve ' + str(resolverQuery))
+            logging.debug('\t\t\t\tresolver ' + str(server) + ' failed to resolve ' + str(resolverQuery))
             #ret.remove(server)
         except dns.resolver.NoNameservers:
             #"No non-broken nameservers are available to answer the query."
-            logging.info('\t\t\t\tresolver ' + str(server) + ' failed to resolve ' + str(resolverQuery))
+            logging.debug('\t\t\t\tresolver ' + str(server) + ' failed to resolve ' + str(resolverQuery))
             #ret.remove(server)
         except KeyboardInterrupt:
             sys.exit('Caught keyboard interrupt!')
@@ -253,16 +265,18 @@ def print_to_file(output,aFile):
 
 def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     '''run subdomain bruteforce lookup against a specified target domain'''
+    #TODO: refactor this ugly function
     if thread_count is None:
         thread_count = len(resolve_list)*5
-        logging.info('set thread count to ' + str(thread_count))
+        logging.debug('resolver list is ' + str(len(resolve_list)) + ' resolver(s) long')
+        logging.debug('set thread count ( ' + str(len(resolve_list)) + '*5 ) to ' + str(thread_count))
     if thread_count < 1:
         logging.warning(__name__ + ' passed thread_count: ' + str(thread_count) + ' - we NEED at least 1 thread. Setting thread_count to 1')
         thread_count = 1
     if len(hosts) < 100:
-        logging.debug('begin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + str(hosts) + ' ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput))
+        logging.debug('begin ' + 'run_target(target, hosts, resolve_list, thread_count, aFile, noOutput)' + ' passed: ' + str(target) + ' ' + str(hosts) + ' ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ' ' + str(noOutput) + '\n')
     elif len(hosts) >=99:
-        logging.debug('begin ' + 'run_target(target ' + str(target) + ', hosts' + '<huge hosts list! Omitting it!> , resolve_list ' + str(resolve_list) + ', thread_count ' + str(thread_count) +  ', aFile ' + str(aFile) + ', noOutput ' + str(noOutput))
+        logging.debug('begin ' + 'run_target(target ' + str(target) + ', hosts' + '<huge hosts list! Omitting it!> , resolve_list ' + str(resolve_list) + ', thread_count ' + str(thread_count) +  ', aFile ' + str(aFile) + ', noOutput ' + str(noOutput) + '\n')
     for resolver in resolve_list:
         try:
             resp = dns.resolver.Resolver().query(target)
@@ -276,12 +290,14 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     wildcard = False
     for resolver in resolve_list:
         try:
-            resp = dns.resolver.Resolver().query('would-never-be-a-fucking-domain-name-' + str(random.randint(1, 9999)) + '.' + target)
-            wildcard = str(resp[0])
-            logging.debug('wildcard got ' + str(wildcard) +'\n\n')
+            buildQuery = str('would-never-be-a-fucking-domain-name-' + str(random.randint(1, 9999999)) + '.' + target)
+            logging.debug('trying ' + buildQuery + ' with resolver ' + str(resolver))
+            resp = dns.resolver.Resolver().query(buildQuery)
+            wildcard = str(resp)
+            logging.debug('wildcard got ' + str(wildcard))
         except dns.resolver.NXDOMAIN:
-            logging.debug('wildcard got ' + str(wildcard) +'\n\n')
-            logging.info("Target ( " + str(target) + " ) doesn't seem to redirect nonsense subdomains with resolver" + str(resolver) + "! (else our results would be invalid)")
+            logging.debug('\tresolver threw NXDOMAIN! wildcard got ' + str(wildcard) + ' - ' + str(type(wildcard)))
+            logging.debug("\t\tTarget ( " + str(target) + " ) doesn't seem to redirect nonsense subdomains with resolver " + str(resolver) + "! (else our results would be invalid)\n")
             
         except:
             logging.error('\n\tWARNING! ' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
@@ -289,7 +305,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
             logging.warning('resolver ' + str(resolver) + ' seems to redirect nonsense subdomains of target ' + str(target))
             logging.warning('removing resolver ' + str(resolver))
             resolve_list.remove(resolver)
-
+    logging.debug("resolvers that don't seem to redirect nonsense subdomains: " + str(resolve_list) + str('\n'))
 ##    if wildcard != ("" or False):
 ##        logging.warning('wildcard !="" : ' + str(wildcard))
 ##        print("Target ( " + target + " ) seems to redirect nonsense subdomains! (our results will be invalid!) Skipping")
@@ -361,10 +377,10 @@ def main():
     
     if options.debugMode != "":
         logging.basicConfig(level=logging.DEBUG)
-        print('Debug mode set!')
+        print('Debug mode set!\n')
     else:
         logging.basicConfig(level=logging.WARN)
-    logging.debug('\ndebugger passed options: ' + str(options))
+    logging.debug('debugger passed options: ' + str(options))
     logging.debug('debugger passed args: '    + str(args))
     if len(args) < 1 and options.filter == "" and options.targets == "":
         parser.error("You must provide a target! Use -h for help.")
@@ -386,9 +402,9 @@ def main():
         logging.debug('hosts = ' + str(hosts))
     elif len(hosts) > 99:
         logging.debug('hosts = a really damn big list, so big that I\'m omitting it!')
-    logging.info('Checking resolvers...')
+    logging.debug('Checking resolvers...')
     resolve_list = check_resolvers(options.resolvers)
-    logging.debug('main() got list of resolvers: ' + str(resolve_list) + ' from check_resolvers')
+    logging.debug('main() got list of resolvers: ' + str(resolve_list) + ' from check_resolvers\n')
     signal.signal(signal.SIGINT, killme)
 
     for target in targets:
