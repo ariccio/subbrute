@@ -9,7 +9,7 @@ Written by Rook
 Forked by jeremyBass
 Forked by Alexander Riccio
 
-"\'if done is not None\' is faster than \'if done != None\', which in turn is faster than \'if not done\'." - http://www.clips.ua.ac.be/tutorials/python-performance-optimization
+"'if done is not None' is faster than 'if done != None', which in turn is faster than 'if not done'." - http://www.clips.ua.ac.be/tutorials/python-performance-optimization
 
 '''
 #TODO: get rid of string concatenation!
@@ -53,7 +53,7 @@ def killme(_, _unused):
 
 class lookup(Thread):
     '''an object that is a single lookup thread'''
-    def __init__(self, in_q, out_q, domain, tid, wildcard = False, resolver_list = []):
+    def __init__(self, in_q, out_q, domain, tid, wildcard = False, resolver_list = []):#resolver_list is misleading, is currently only single resolver per thread
         Thread.__init__(self)
         self.__in_q = in_q
         self.__out_q = out_q
@@ -77,17 +77,18 @@ class lookup(Thread):
         '''Query DNS resolver(s), if no answer or timeout, backoff  2^numTries '''
         #TODO: refactor this method
         slept = 0
-        logging.debug('\t\t\tthread %i checking \'%s\''%(self.__tid,host))
+        logging.debug('\t\t\tthread %i checking \'%s\' with resolver %s'% (self.__tid, host,str(self.__resolver_list)) )
         domain_match = re.compile("[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}")
         while True:
             try:
                 answer = self.__resolver.query(host)
-                logging.debug('\t\t\t\tthread %i got answer: \'%s\' for host: \'%s\'!'%(self.__tid, str(answer[0]),host))
+                self.__ansZero = str(answer[0])
+                logging.debug('\t\t\t\tthread %i got answer: \'%s\' for host: \'%s\' with resolver %s!'%(self.__tid, self.__ansZero, host,str(self.__resolver_list)))
                 if answer is not None:
-                    isValidIP = re.match(domain_match, str(answer[0]))
+                    isValidIP = re.match(domain_match, self.__ansZero)
                     if isValidIP is not None:
-                        logging.debug('\t\t\t\t\t%s matches valid IP' % (answer[0]))
-                    return str(answer[0])
+                        logging.debug('\t\t\t\t\t%s matches valid IP' % self.__ansZero)
+                    return self.__ansZero
                 else:
                     return False
             except dns.resolver.NXDOMAIN:
@@ -151,10 +152,12 @@ class lookup(Thread):
                  |      target argument, if any, with sequential and keyword arguments taken
                  |      from the args and kwargs arguments, respectively.'''
 
+        logging.debug('thread %i running!'% self.__tid)
         while True:
             sub = self.__in_q.get()
             if not sub:
-                logging.debug('\t\t\tthread %i:\tnot sub!'%(self.__tid))
+                logging.debug('\t\t\tthread %i:\tnot sub!,  sub = %s'% (self.__tid, sub))
+                logging.debug('type sub = %s' % str(type(sub)))
                 if sub is None:
                     #me debugging method
                     logging.debug('\t\t\tthread %i:\tsub is None!'%(self.__tid))
@@ -176,6 +179,7 @@ class lookup(Thread):
                 if addr and self.__wildcard == False:
                     logging.debug('\t\t\t\tthread %i :\t\' %s \' is valid! putting in out_q' % (self.__tid, self.__test))
                     self.__out_q.put(self.__test)
+                    #domainDict[]
 
 
 def extract_subdomains(file_name):
@@ -351,15 +355,17 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
 
     step = 0
     threads = []
+    domainDict = {}
     wildcard = str(wildcard)
     
     logging.debug('\t                                                lookup( ' + 'target,\t\t' + 'wildcard,\t' + 'resolve_list[step:step + step_size]' +' )')
     for tid in range(thread_count):
         #logging.debug(str(step + step_size))
-        logging.debug('resolve_list[%i] = %s' % ((step + step_size), str(resolve_list[step:step + step_size])))
-        logging.debug('wildcardDict[%s] = %s' % (str(resolve_list[step:step + step_size]), wildcardDict.get(str(resolve_list[step:step + step_size]))))
-        logging.debug('\tAppending new lookup object to list of threads, lookup( ' + target + ',\t' + str(wildcardDict.get(str(resolve_list[step:step + step_size]))) + ',\t\t' + str(resolve_list[step:step + step_size]) +' )')
-        threads.append( lookup( in_q, out_q, target, tid,  wildcardDict.get(str(resolve_list[step:step + step_size])) , resolve_list[step:step + step_size] ) )
+        thisResolve = str(resolve_list[step:step + step_size])
+        logging.debug('resolve_list[%i] = %s' % ((step + step_size), thisResolve))
+        logging.debug('wildcardDict[%s] = %s' % (str(resolve_list[step:step + step_size]), wildcardDict.get(thisResolve)))
+        logging.debug('\tAppending new lookup object to list of threads, lookup( ' + target + ',\t' + str(wildcardDict.get(thisResolve)) + ',\t\t' + thisResolve +' )')
+        threads.append( lookup( in_q, out_q, target, tid,  wildcardDict.get(thisResolve) , resolve_list[step:step + step_size] ) )
         threads[-1].start()
         logging.debug('\tstep (now %i) incrementing by step_size (%i)' % (step, step_size))
         step += step_size
@@ -408,7 +414,9 @@ def main():
     parser.add_option("-e", "--sendto_email", dest = "sendto_email", default = "",
               type = "string", help = "(optional) email to send file to")
     parser.add_option("-d", "--debug", dest = "debugMode", default = "",
-              type  = "string", help = "for the curious...")
+              type = "string", help = "for the curious...")
+    parser.add_option("-V", "--validate", dest = "validateByPing", default = "",
+              type = "string", help = "after brute force lookup, attempts to validate found subdomains by pinging hosts ")
 
     (options, args) = parser.parse_args()
     
@@ -421,6 +429,7 @@ def main():
     logging.debug('\ttype options: %s' % str(type(options)))
     logging.debug('debugger passed args: %s'      % str(args))
     logging.debug('\ttype args: %s' % str(type(args)))
+    logging.debug('\ttype options.targets: %s' % str(type(options.targets)))
     if len(args) < 1 and options.filter == "" and options.targets == "":
         parser.error("You must provide a target! Use -h for help.")
         logging.critical('I don\'t know what to do!')
@@ -431,6 +440,7 @@ def main():
 
     if options.targets != "":
         targets = open(options.targets).read().split("\n")
+        logging.debug('type of targets = %s' % str(type(targets)))
         logging.info('options.targets !="", targets = %s' % str(targets))
         print('\n\n\n\n\n\n\n\n\n\ttype targets: %s' % str(type(targets)))
     else:
@@ -456,7 +466,7 @@ def main():
             elif options.output_file == "":
                 out_q = run_target(target, hosts, resolve_list, options.thread_count, options.output_file, True)
 
-    if options.debugMode != "":
+    if options.debugMode != "" or options.validateByPing != "":
         print('\n\n\n\n\n')
         print(out_q)
         for host in out_q:
