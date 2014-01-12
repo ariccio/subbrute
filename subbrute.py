@@ -470,7 +470,7 @@ def main():
         print('\n\n\n\n\n')
         print(out_q)
         for host in out_q:
-            os.system('ping -n 1 %s' % host)
+            os.system('ping -w 100 -n 1 %s' % host)
 
 if __name__ == "__main__":
     main()
