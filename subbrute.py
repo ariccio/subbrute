@@ -12,11 +12,12 @@ Forked by Alexander Riccio
 "'if done is not None' is faster than 'if done != None', which in turn is faster than 'if not done'." - http://www.clips.ua.ac.be/tutorials/python-performance-optimization
 
 '''
-#TODO: get rid of string concatenation!
+#TODO: get rid of optparse!
 from __future__ import print_function
 import re
 import time
-import optparse
+import optparse#depreciated
+import argparse
 import os
 import signal
 import sys
