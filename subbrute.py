@@ -186,7 +186,7 @@ def extract_subdomains(file_name):
     #Only match domains that have 3 or more sections subdomain.domain.tld
     domain_match = re.compile("([a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]*)+")
     f_all = re.findall(domain_match, sub_file)
-    logging.debug('domains that have that have 3 or more sections: %s' % str(f_all))
+    #logging.debug('domains that have that have 3 or more sections: %s' % f_all)
     for i in f_all:
         if i.find(".") >= 0:
             p = i.split(".")[0:-1]
@@ -202,7 +202,7 @@ def extract_subdomains(file_name):
                         q = q.lower()
                         if q in subs:
                             subs[q] += 1
-                            logging.debug('subdomain %s has been seen %s times' % (q, str(subs[q])))
+                            #logging.debug('subdomain %s has been seen %s times' % (q, str(subs[q])))
                         else:
                             logging.debug('subdomain %s seen for the first time' % q)
                             subs[q] = 1
@@ -473,9 +473,9 @@ def _profile(continuation):
     for a in ['calls', 'cumtime', 'cumulative', 'ncalls', 'time', 'tottime']:
         try:
             stats.sort_stats(a)
-            stats.print_stats(10)
-            stats.print_callees(10)
-            stats.print_callers(10)
+            stats.print_stats(100)
+            stats.print_callees(100)
+            stats.print_callers(100)
         except KeyError:
             pass
     os.remove(prof_file)
