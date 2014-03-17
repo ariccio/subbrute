@@ -11,6 +11,8 @@ Forked by Alexander Riccio
 
 "'if done is not None' is faster than 'if done != None', which in turn is faster than 'if not done'." - http://www.clips.ua.ac.be/tutorials/python-performance-optimization
 
+Yes, a shitton of my lines are >80 characters
+
 '''
 #TODO: get rid of optparse!
 from __future__ import print_function
@@ -23,10 +25,9 @@ import signal
 import sys
 import random
 import dns.resolver
-import platform
+#import platform
 import logging
-import timeit
-
+#import timeit
 
 from threading import Thread
 import math
@@ -37,7 +38,7 @@ DOMAIN_ALWAYS_VALID = "www.google.com"
 if sys.version_info.major < 3:
     import Queue as queue
 elif sys.version_info.major > 2:
-    import queue    
+    import queue
 
 #logging.basicConfig(level=logging.WARN)
 
@@ -51,7 +52,7 @@ def killme(_, _unused):
 
 class lookup(Thread):
     '''an object that is a single lookup thread'''
-    def __init__(self, in_q, out_q, domain, tid, wildcard = False, resolver_list = []):#resolver_list is misleading, is currently only single resolver per thread
+    def __init__(self, in_q, out_q, domain, tid, wildcard=False, resolver_list=[]):#resolver_list is misleading, is currently only single resolver per thread
         Thread.__init__(self)
         self.__in_q = in_q
         self.__out_q = out_q
@@ -75,13 +76,13 @@ class lookup(Thread):
         '''Query DNS resolver(s), if no answer or timeout, backoff  2^numTries '''
         #TODO: refactor this method
         slept = 0
-        logging.debug('\t\t\tthread %i checking \'%s\' with resolver %s'% (self.__tid, host,str(self.__resolver_list)) )
+        logging.debug('\t\t\tthread %i checking \'%s\' with resolver %s' % (self.__tid, host, str(self.__resolver_list)))
         domain_match = re.compile("[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}")
         while True:
             try:
                 answer = self.__resolver.query(host)
                 self.__ansZero = str(answer[0])
-                logging.debug('\t\t\t\tthread %i got answer: \'%s\' for host: \'%s\' with resolver %s!'%(self.__tid, self.__ansZero, host,str(self.__resolver_list)))
+                logging.debug('\t\t\t\tthread %i got answer: \'%s\' for host: \'%s\' with resolver %s!'%(self.__tid, self.__ansZero, host, str(self.__resolver_list)))
                 if answer is not None:
                     isValidIP = re.match(domain_match, self.__ansZero)
                     if isValidIP is not None:
@@ -108,9 +109,9 @@ class lookup(Thread):
                     #If the self.backup_resolver list did work, lets stick with it.
                     self.__resolver.nameservers = self.__resolver_list
                     return False
-                
+
                 logging.info('\t\tthread %i:\twe might have hit a rate limit on a resolver! (while testing host: %s)' % (self.__tid, host))
-                self.__sleepTime = math.pow(2,slept)
+                self.__sleepTime = math.pow(2, slept)
                 logging.info('\t\tthread %i:\tsleeping %i' % (self.__tid, self.__sleepTime))
                 time.sleep(self.__sleepTime)
                 slept += 1
@@ -132,7 +133,7 @@ class lookup(Thread):
                 logging.error('something REALLY weird is going on!')
                 logging.error(sys.exc_info())
                 sys.exit(self.__tid)
-                
+
 
 
 
@@ -197,7 +198,7 @@ def extract_subdomains(file_name):
             #do we have a subdomain.domain left?
             if len(p) >= 1:
                 for q in p:
-                    if q :
+                    if q:
                         q = q.lower()
                         if q in subs:
                             subs[q] += 1
@@ -205,8 +206,8 @@ def extract_subdomains(file_name):
                         else:
                             logging.debug('subdomain %s seen for the first time' % q)
                             subs[q] = 1
-                            
-    subs_sorted = sorted(subs.keys(), key = lambda x: subs[x], reverse = True)
+
+    subs_sorted = sorted(subs.keys(), key=lambda x: subs[x], reverse=True)
     [print(subs) for subs in subs_sorted]
     return subs_sorted
 
@@ -215,22 +216,22 @@ def extract_subdomains(file_name):
 
 def readAndRetResolvers(file_name):
     '''reads DNS nameservers from a file given by input file_name, and reutrns resolvers as a list'''
-    ret = []
+    #ret = []
     lines = []
-    lineClean = []    
-    
+    lineClean = []
+
     with open(file_name, 'r') as res_file:
         for line in res_file:
             if (line != '') and (line != '\n'):
                 lines.append(line)
-    
+
     for line in lines:
         lineSplit = line.split('\n')
         lineProc  = [None, None]
 
         for word in lineSplit:
             if lineSplit.index(word) == 0:
-                lineProc[0] =  word[0:len(word)]
+                lineProc[0] = word[0:len(word)]
 
             elif lineSplit.index(word) == 1:
                 lineProc[1] = word
@@ -252,7 +253,7 @@ def check_resolvers(file_name):
     resolver = dns.resolver.Resolver()
 
     resolverQuery = DOMAIN_ALWAYS_VALID
-    
+
     logging.debug('\t\t\tusing %s for query, should never resolve false\n' % str(resolverQuery))#TODO:ssl cert check?
 
     ret = []
@@ -260,12 +261,12 @@ def check_resolvers(file_name):
         resolver.nameservers = [server]
 
         try:
-            logging.debug('\t\t\t\tChecking resolver %s...' % server )            
+            logging.debug('\t\t\t\tChecking resolver %s...' % server)
             resolver.query(resolverQuery)
             #should throw an exception before this line.
             ret.append(server)
         except (dns.resolver.NXDOMAIN, dns.resolver.NoNameservers, dns.resolver.Timeout):
-            logging.debug('\t\t\t\t\tresolver %s failed to resolve %s, reason: %s' % (server, resolverQuery, str(sys.exc_info()[1])) )
+            logging.debug('\t\t\t\t\tresolver %s failed to resolve %s, reason: %s' % (server, resolverQuery, str(sys.exc_info()[1])))
             try:
                 ret.remove(server)
             except ValueError:
@@ -281,14 +282,14 @@ def check_resolvers(file_name):
 
 
 
-def print_to_file(output,aFile):
+def print_to_file(output, aFile):
     '''prints found domains to a file'''
     try:
-        f = open(aFile,'a')
+        with open(aFile, 'a') as f:
+            f.write(output+'\n')
     except IOError:
-        f = open(aFile,'w')
-    f.write(output+'\n')
-    f.close()
+        with open(aFile, 'w') as f:
+            f.write(output+'\n')
 
 
 
@@ -298,7 +299,7 @@ def tryResolveBaseDomainWithListOfResolvers(resolve_list, target):
        Resolvers that cannot resolve the base target domain will not be able to resolve any subdomains thereof.'''
     for resolver in resolve_list:
         try:
-            _ = dns.resolver.Resolver().query(target)        
+            _ = dns.resolver.Resolver().query(target)
         except dns.resolver.NXDOMAIN:
             logging.warning('Domain  ( %s ) not found!' % target)
             logging.warning('Resolver %s could not resolve target %s! removing from resolve_list' % (resolver, target))
@@ -308,7 +309,7 @@ def tryResolveBaseDomainWithListOfResolvers(resolve_list, target):
 
 
 
-def testAndRetWildcardRedirection( resolve_list, target ):
+def testAndRetWildcardRedirection(resolve_list, target):
     '''Given a list of resolvers and a target, this function tries to resolve a completely nonsensical, and therefore
        an improbably substantive domain, with each resolver. Returns a list of pertinent resolvers. Resolvers that
        redirect any nonexistent subdomain to a valid address will not provide any valid information.'''
@@ -325,18 +326,18 @@ def testAndRetWildcardRedirection( resolve_list, target ):
         except dns.resolver.NXDOMAIN:
             logging.debug('\t\tresolver %s threw NXDOMAIN; Wildcard got %s' % (resolver, wildcard))
             logging.debug("\t\t\tTarget ( " + target + " ) doesn't seem to redirect nonsense subdomains with resolver " + resolver + "!")
-            logging.debug('\t\t\t\tadding resolver %s to dict wildcardDict[%s] with value False\n' % (resolver,resolver))
+            logging.debug('\t\t\t\tadding resolver %s to dict wildcardDict[%s] with value False\n' % (resolver, resolver))
             wildcardDict[str(resolver)] = False
-            
+
         except:
             logging.error('\n' + __name__ + ' ran into exception with info:  ' + str(sys.exc_info()) + '''sys.exc_info()[1] + sys.exc_info()[] +''' ' while checking for wildcards')
         if wildcard != False and wildcard != "" and wildcard != str(False):
             logging.warning('resolver %s seems to redirect nonsense subdomains of target %s' % (resolver, target))
             logging.warning('removing resolver %s from resolve_list' % resolver)
-            logging.debug('\t\t\t\tadding resolver %s to dict wildcardDict[%s] with value True' % (resolver,resolver))
+            logging.debug('\t\t\t\tadding resolver %s to dict wildcardDict[%s] with value True' % (resolver, resolver))
             wildcardDict[str(resolver)] = True
             resolve_list.remove(resolver)
-    return resolve_list, wildcardDict, wildcard 
+    return resolve_list, wildcardDict, wildcard
 
 
 
@@ -345,7 +346,7 @@ def retValidThreadCount(thread_count, resolve_list):
     '''Checks sanity of thread count, returns a sane thread count'''
     if thread_count is None:
         thread_count = len(resolve_list)*RESOLVE_NUM_THREADS
-        logging.debug('set thread count, resolvers * constant number of threads, ( %i*%i ) to %i' % (len(resolve_list), RESOLVE_NUM_THREADS, thread_count ) )
+        logging.debug('set thread count, resolvers * constant number of threads, ( %i*%i ) to %i' % (len(resolve_list), RESOLVE_NUM_THREADS, thread_count))
     if thread_count < 1:
         logging.warning('\t%sthread_count: %i - we NEED at least 1 thread. Setting thread_count to 1' % (__name__, thread_count))
         thread_count = 1
@@ -358,21 +359,21 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
     '''run subdomain bruteforce lookup against a specified target domain'''
     #TODO: refactor this ugly function
     thread_count = retValidThreadCount(thread_count, resolve_list)
-    
+
     if len(hosts) < 100:
         logging.debug('begin run_target(target, hosts, resolve_list, thread_count, aFile, noOutput) passed: ' + target + ' ' + str(hosts) + ' ' + str(resolve_list) + ' ' + str(thread_count) + ' ' + str(aFile) + ', ' + str(noOutput) + ')\n')
 
-    elif len(hosts) >=99:
+    elif len(hosts)>=99:
         logging.debug('begin run_target(target ' + target + ', hosts' + '<huge hosts list! Omitting it!> , resolve_list ' + str(resolve_list) + ', thread_count ' + str(thread_count) +  ', aFile ' + str(aFile) + ', noOutput ' + str(noOutput) + ')\n')
 
-    resolve_list =  tryResolveBaseDomainWithListOfResolvers(resolve_list, target)
+    resolve_list = tryResolveBaseDomainWithListOfResolvers(resolve_list, target)
 
     if len(resolve_list) < 1:
         logging.error('No resolvers can resolve %s! I can\'t check for subdomains of an unknown domain!' % target)
         return queue.Queue()
 
     resolve_list, wildcardDict, wildcard = testAndRetWildcardRedirection(resolve_list, target)
-    
+
     #The target might have a wildcard dns record...
     logging.debug('\tcontents of wildcardDict: ')
     logging.debug('\t\t[')
@@ -381,34 +382,33 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
         logging.debug('\t\t [%s] = %s' % (key, str(wildcardDict[key])))
 
     logging.debug('\t\t\t]')
-    logging.debug("\tresolvers that don't seem to redirect nonsense subdomains: %s\n" % str(resolve_list) )
+    logging.debug("\tresolvers that don't seem to redirect nonsense subdomains: %s\n" % str(resolve_list))
     in_q = queue.Queue()
     out_q = queue.Queue()
     for h in hosts:#puts all known subdomains into in_q
         logging.debug('\t\t\tputting h %s from hosts into in_q' % h)
         in_q.put(h)
-        
+
     #Terminate the queue
     in_q.put(False)
     step_size = int(len(resolve_list) / thread_count)
     logging.debug('\tchose step size: %i' % step_size)
 
-    #Split up the resolver list between the threads. 
+    #Split up the resolver list between the threads.
     if step_size <= 0:
         step_size = 1
 
     step = 0
     threads = []
     wildcard = str(wildcard)
-    
-    logging.debug('\t                                                lookup( ' + 'target,\t\t' + 'wildcard,\t' + 'resolve_list[step:step + step_size]' +' )')
+
+    logging.debug('\t                                                lookup( target,\t\twildcard,\tresolve_list[step:step + step_size] )')
     for tid in range(thread_count):
         #logging.debug(str(step + step_size))
         thisResolve = str(resolve_list[step:step + step_size])
-        
-        logging.debug('wildcardDict[%s] = %s' % (str(resolve_list[step:step + step_size]), wildcardDict.get(thisResolve)))
-        logging.debug('\tAppending new lookup object to list of threads, lookup( ' + target + ',\t' + str(wildcardDict.get(thisResolve)) + ',\t\t' + thisResolve +' )')
-        threads.append( lookup( in_q, out_q, target, tid,  wildcardDict.get(thisResolve) , resolve_list[step:step + step_size] ) )
+        logging.debug('wildcardDict[%s] = %s' % (thisResolve, wildcardDict.get(thisResolve)))
+        logging.debug('\tAppending new lookup object to list of threads, lookup( %s,\t%s\t\t%s )'% (str(target), str(wildcardDict.get(thisResolve)), str(thisResolve)))
+        threads.append(lookup(in_q, out_q, target, tid, wildcardDict.get(thisResolve), thisResolve))
         threads[-1].start()
         logging.debug('\tstep (now %i) incrementing by step_size (%i)' % (step, step_size))
         step += step_size
@@ -421,7 +421,7 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
         #is this the best way to do it? #TODO: find non-shitty way to do this
         try:
             d = out_q.get(True, 2)
-            #we will get an empty exception before this runs. 
+            #we will get an empty exception before this runs.
             if not d:
                 logging.info('Not d! - d= %s' % str(d))
                 threads_remaining -= 1
@@ -434,16 +434,13 @@ def run_target(target, hosts, resolve_list, thread_count, aFile, noOutput):
                 if noOutput:
                     out.append(d)
                 if noOutput == False:
-                    print_to_file(d,aFile)
+                    print_to_file(d, aFile)
         except queue.Empty:
         #make sure everyone is complete
             if threads_remaining <= 0:
                 logging.info('No threads remaining!')
                 break
     return out
-
-
-
 
 def readAndRetHosts(fileName):
     if os.path.exists(fileName):
@@ -455,50 +452,74 @@ def readAndRetHosts(fileName):
     return validHostnames
 
 
-
+def _profile(continuation):
+    prof_file = 'subbrute.prof'
+    logging.warning('begin profiling....')
+    try:
+        import cProfile
+        import pstats
+        logging.warning('Profiling using cProfile')
+        cProfile.runctx('continuation()', globals(), locals(), prof_file)
+        stats = pstats.Stats(prof_file)
+    except ImportError:
+        import hotshot
+        import hotshot.stats
+        prof = hotshot.Profile(prof_file, lineevents=1)
+        logging.warning('Profiling using hotshot')
+        prof.runcall(continuation)
+        prof.close()
+        stats = hotshot.stats.load(prof_file)
+    stats.strip_dirs()
+    for a in ['calls', 'cumtime', 'cumulative', 'ncalls', 'time', 'tottime']:
+        try:
+            stats.sort_stats(a)
+            stats.print_stats(10)
+            stats.print_callees(10)
+            stats.print_callers(10)
+        except KeyError:
+            pass
+    os.remove(prof_file)
 
 def main():
     parser = optparse.OptionParser("usage: %prog [options] target")
-    parser.add_option("-c", "--thread_count", dest = "thread_count", default = None, type = "int",
-                      help = "(optional) Number of lookup theads to run,  more isn't always better. default=10")
     
-    parser.add_option("-s", "--subs", dest = "subs", default = "subs.txt", type = "string", help = "(optional) list of subdomains,  default='subs.txt'")
-
-    parser.add_option("-r", "--resolvers", dest = "resolvers", default = "resolvers.txt", type = "string",
-                      help = "(optional) A list of DNS resolvers, if this list is empty it will OS's internal resolver default='resolvers.txt'")
-
-    parser.add_option("-f", "--filter_subs", dest = "filter", default = "", type = "string",
-                      help = "(optional) A file containing unorganized domain names which will be filtered into a list of subdomains sorted by frequency. List will be printed to stdout, and program will EXIT. This was used to build subs.txt.")
-
-    parser.add_option("-t", "--target_file", dest = "targets", default = "", type = "string",
-                      help = "(optional) A file containing a newline delimited list of domains to brute force.")
-
-    parser.add_option("-o", "--output_file", dest = "output_file", default = "", type = "string", help = "(optional) A file to output list")
-
-    parser.add_option("-d", "--debug", dest = "debugMode", default = "", type = "string", help = "for the curious...")
-
-    parser.add_option("-V", "--validate", dest = "validateByPing", default = "", type = "string",
-                      help = "after brute force lookup, attempts to validate found subdomains by pinging hosts ")
+    parser.add_option("-c", "--thread_count", dest="thread_count", default=RESOLVE_NUM_THREADS, type="int", help="(optional) Number of lookup theads to run,  more isn't always better. default=%i" % (RESOLVE_NUM_THREADS))
+    parser.add_option("-s", "--subs", dest="subs", default="subs.txt", type="string", help="(optional) list of subdomains,  default='subs.txt'")
+    parser.add_option("-r", "--resolvers", dest="resolvers", default="resolvers.txt", type="string", help="(optional) A list of DNS resolvers, if this list is empty it will OS's internal resolver default='resolvers.txt'")
+    parser.add_option("-f", "--filter_subs", dest="filter", default="", type="string", help="(optional) A file containing unorganized domain names which will be filtered into a list of subdomains sorted by frequency. List will be printed to stdout, and program will EXIT. This was used to build subs.txt.")
+    parser.add_option("-t", "--target_file", dest="targets", default="", type="string", help="(optional) A file containing a newline delimited list of domains to brute force.")
+    parser.add_option("-o", "--output_file", dest="output_file", default="", type="string", help="(optional) A file to output list")
+    parser.add_option("-d", "--debug", action='store_true', dest="debugMode", default=False, help="for the curious...")
+    parser.add_option("-V", "--validate", action='store_true', dest="validateByPing", default=False, help="after brute force lookup, attempts to validate found subdomains by pinging hosts ")
 
     #TODO: 'bare' output mode, i.e. output ONLY valid domains, no logging info; for the linux loving stdin/stdout ninjas
     (options, args) = parser.parse_args()
-    
-    if options.debugMode != "":
+
+    if options.debugMode:
         logging.basicConfig(level=logging.DEBUG)
         print('Debug mode set!\n')
     else:
         logging.basicConfig(level=logging.WARN)
     logging.debug('debugger passed options: %s' % str(options))
     logging.debug('debugger passed args: %s'      % str(args))
-    if len(args) < 1 and options.filter == "" and options.targets == "":
+    if len(args) < 1 and options.filter == False and options.targets == "":
         parser.error("You must provide a target! Use -h for help.")
         logging.critical('I don\'t know what to do!')
         sys.exit('No target!')
-        
-    if options.filter != "":
-        extract_subdomains(options.filter)
-        sys.exit(0)
 
+    if options.filter != "":
+        if options.debugMode == False:
+            extract_subdomains(options.filter)
+            sys.exit(0)
+        elif options.debugMode:
+            def profileExtract():
+                try:
+                    extract_subdomains(options.filter)
+                except:
+                    pass
+            _profile(profileExtract)
+            sys.exit()
+            
     if options.targets != "":
         targets = open(options.targets).read().split("\n")
         logging.info('options.targets !="", targets = %s' % str(targets))
@@ -512,22 +533,22 @@ def main():
         logging.debug('readAndRetHosts returned %s' % str(hosts))
     elif len(hosts) > 99:
         logging.debug('hosts = a really damn big list, so big that I\'m omitting it!')
-        
-    
+
+
     resolve_list = check_resolvers(options.resolvers)
     logging.debug('main() got list of resolvers: %s from check_resolvers\n' % (str(resolve_list)))
     signal.signal(signal.SIGINT, killme)
 
     for target in targets:
         target = target.strip()
-            
+
         if target:
             if options.output_file != "":
                 out_q = run_target(target, hosts, resolve_list, options.thread_count, options.output_file, False)
             elif options.output_file == "":
                 out_q = run_target(target, hosts, resolve_list, options.thread_count, options.output_file, True)
 
-    if options.debugMode != "" or options.validateByPing != "":#TODO: refactor to enable exclusive invokation of validation (without debugMode), support for linux & windows
+    if options.debugMode or options.validateByPing:#TODO: refactor to enable exclusive invokation of validation (without debugMode), support for linux & windows
         print('\n\n\n\n\n')
         print(out_q)
         for host in out_q:
