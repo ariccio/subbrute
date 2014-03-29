@@ -146,8 +146,8 @@ class lookup(Thread):
                  |      as the target argument, if any, with sequential and keyword arguments taken from the args and kwargs arguments, respectively.'''
 
         logging.debug('thread %i running!'% self.__tid)
-        sub = self.__in_q.get()
-        while sub:
+        while True:
+            sub = self.__in_q.get()
             if not sub:
                 logging.debug('\t\t\tthread %i:\tnot sub!,  sub = %s'% (self.__tid, sub))
                 logging.debug('type sub = %s' % str(type(sub)))
@@ -171,7 +171,7 @@ class lookup(Thread):
                 if addr and self.__wildcard == False:
                     logging.debug('\t\t\t\tthread %i :\t\' %s \' is valid! putting in out_q' % (self.__tid, self.__test))
                     self.__out_q.put(self.__test)
-                sub = self.__in_q.get()
+
 
 
 
